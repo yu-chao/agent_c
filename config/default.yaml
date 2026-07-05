@@ -1,0 +1,17 @@
+model:
+  provider: anthropic
+  name: null
+  fallback_provider: openai
+  fallback_model: gpt-5
+anthropic:
+  api_key_env: ANTHROPIC_API_KEY
+openai:
+  api_key_env: OPENAI_API_KEY
+storage:
+  root: .
+context:
+  limit: 50000
+security:
+  require_permission_for_destructive_commands: true
+mcp:
+  enabled_servers: []
