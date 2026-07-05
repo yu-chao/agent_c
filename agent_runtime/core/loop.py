@@ -56,7 +56,7 @@ class AgentRuntime:
                     output = self._execute_tool(call, handlers)
                     self.hooks.trigger("PostToolUse", call, output)
                 results.append(ToolResult(tool_call_id=call.id, content=str(output)))
-            messages.extend([block for block in response.blocks if isinstance(block, TextBlock)])
+            messages.extend(response.blocks)
             messages.extend(results)
         return "Agent stopped after reaching max_turns."
 

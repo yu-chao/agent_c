@@ -2,7 +2,7 @@ import pytest
 
 from agent_runtime.core.loop import AgentRuntime
 from agent_runtime.hooks.manager import HookManager
-from agent_runtime.models import ModelResponse, TextBlock, ToolCall
+from agent_runtime.models import ModelResponse, TextBlock, ToolCall, ToolResult
 from agent_runtime.security.permissions import PermissionPolicy
 from agent_runtime.storage.file_store import FileStore
 from agent_runtime.tools.registry import ToolRegistry, ToolSpec
@@ -79,7 +79,9 @@ def test_runtime_executes_tool_call_and_continues_until_text_response():
     answer = runtime.run_turn("hello")
 
     assert answer == "done"
+    assert model.requests[1].messages[-2] == ToolCall(id="call_1", name="echo", input={"text": "hi"})
     assert model.requests[1].messages[-1].content == "hi"
+    assert isinstance(model.requests[1].messages[-1], ToolResult)
 
 
 class FakeModel:

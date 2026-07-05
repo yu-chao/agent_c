@@ -6,6 +6,7 @@ from agent_runtime.models import (
     create_model_provider,
 )
 from agent_runtime.models.openai import OpenAIProvider
+from agent_runtime.models.anthropic import AnthropicProvider
 from agent_runtime.tools.registry import ToolSpec
 
 
@@ -76,6 +77,28 @@ def test_openai_provider_sends_tool_results_as_function_call_output():
             "type": "function_call_output",
             "call_id": "call_1",
             "output": "ok",
+        }
+    ]
+
+
+def test_anthropic_provider_converts_tool_call_history_to_tool_use():
+    provider = AnthropicProvider(client=object(), model="claude-sonnet-4")
+
+    converted = provider._convert_messages(
+        [ToolCall(id="call_1", name="read_file", input={"path": "README.md"})]
+    )
+
+    assert converted == [
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "call_1",
+                    "name": "read_file",
+                    "input": {"path": "README.md"},
+                }
+            ],
         }
     ]
 

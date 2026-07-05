@@ -55,6 +55,20 @@ class AnthropicProvider:
                 )
             elif isinstance(message, TextBlock):
                 converted.append({"role": "assistant", "content": message.text})
+            elif isinstance(message, ToolCall):
+                converted.append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": message.id,
+                                "name": message.name,
+                                "input": message.input,
+                            }
+                        ],
+                    }
+                )
             elif isinstance(message, dict):
                 converted.append(message)
             else:
@@ -67,6 +81,8 @@ class AnthropicProvider:
             block_type = getattr(block, "type", None)
             if block_type == "text":
                 blocks.append(TextBlock(getattr(block, "text", "")))
+            elif block_type == "thinking":
+                blocks.append(TextBlock(getattr(block, "thinking", "")))
             elif block_type == "tool_use":
                 blocks.append(
                     ToolCall(
