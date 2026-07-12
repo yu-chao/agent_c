@@ -10,6 +10,12 @@ class TextBlock:
 
 
 @dataclass(frozen=True)
+class ThinkingBlock:
+    thinking: str
+    signature: str = ""
+
+
+@dataclass(frozen=True)
 class ToolCall:
     id: str
     name: str
@@ -22,7 +28,7 @@ class ToolResult:
     content: str
 
 
-MessageBlock = TextBlock | ToolCall | ToolResult
+MessageBlock = TextBlock | ThinkingBlock | ToolCall | ToolResult
 
 
 @dataclass
@@ -36,12 +42,14 @@ class ModelRequest:
 
 @dataclass
 class ModelResponse:
-    blocks: list[TextBlock | ToolCall]
+    blocks: list[TextBlock | ThinkingBlock | ToolCall]
     response_id: str | None = None
 
     @property
     def text(self) -> str:
-        return "\n".join(block.text for block in self.blocks if isinstance(block, TextBlock))
+        return "\n".join(
+            block.text for block in self.blocks if isinstance(block, TextBlock)
+        )
 
     @property
     def tool_calls(self) -> list[ToolCall]:

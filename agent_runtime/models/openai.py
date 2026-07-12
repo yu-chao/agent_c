@@ -4,7 +4,15 @@ import json
 import os
 from typing import Any
 
-from agent_runtime.models.base import ModelRequest, ModelResponse, TextBlock, ToolCall, ToolResult
+from agent_runtime.models.base import (
+    MessageBlock,
+    ModelRequest,
+    ModelResponse,
+    TextBlock,
+    ThinkingBlock,
+    ToolCall,
+    ToolResult,
+)
 
 
 class OpenAIProvider:
@@ -49,7 +57,7 @@ class OpenAIProvider:
             response_id=getattr(response, "id", None),
         )
 
-    def _convert_messages(self, messages: list[Any]) -> list[dict[str, Any]]:
+    def _convert_messages(self, messages: list[MessageBlock | dict[str, Any]]) -> list[dict[str, Any]]:
         converted = []
         for message in messages:
             if isinstance(message, ToolResult):
@@ -60,6 +68,9 @@ class OpenAIProvider:
                         "output": message.content,
                     }
                 )
+            elif isinstance(message, ThinkingBlock):
+                # OpenAI Responses API has no equivalent; preserve by skipping.
+                continue
             elif isinstance(message, TextBlock):
                 converted.append({"role": "assistant", "content": message.text})
             elif isinstance(message, ToolCall):
@@ -77,8 +88,8 @@ class OpenAIProvider:
                 converted.append({"role": "user", "content": str(message)})
         return converted
 
-    def _parse_output(self, output: list[Any]) -> list[TextBlock | ToolCall]:
-        blocks: list[TextBlock | ToolCall] = []
+    def _parse_output(self, output: list[Any]) -> list[TextBlock | ThinkingBlock | ToolCall]:
+        blocks: list[TextBlock | ThinkingBlock | ToolCall] = []
         for item in output:
             item_type = _get(item, "type")
             if item_type == "function_call":

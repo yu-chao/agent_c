@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import yaml
+from dotenv import load_dotenv
+
 from agent_runtime.core import AgentRuntime
 from agent_runtime.hooks import HookManager
 from agent_runtime.models import create_model_provider
@@ -11,14 +14,17 @@ from agent_runtime.storage import FileStore
 from agent_runtime.tools import ToolRegistry, ToolSpec
 
 
-def main(argv: list[str] | None = None):
-    parser = argparse.ArgumentParser(description="Run the generic agent runtime.")
-    parser.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic")
-    parser.add_argument("--model", default=None)
-    args = parser.parse_args(argv)
+def _load_config() -> dict:
+    config_path = Path(__file__).resolve().parents[1] / "config" / "default.yaml"
+    if config_path.exists():
+        with config_path.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
 
-    config = {"model": {"provider": args.provider, "name": args.model}}
-    model = create_model_provider(config)
+
+def main():
+    load_dotenv()
+    model = create_model_provider()
     registry = create_default_registry(Path.cwd())
     runtime = AgentRuntime(
         model=model,
