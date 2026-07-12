@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from agent_runtime.core import AgentRuntime
 from agent_runtime.hooks import HookManager
+from agent_runtime.mcp.mock import MockMCPHub
 from agent_runtime.models import create_model_provider
 from agent_runtime.security import PermissionPolicy
 from agent_runtime.storage import FileStore
@@ -47,47 +48,49 @@ def main():
 
 def create_default_registry(workdir: Path) -> ToolRegistry:
     store = FileStore(workdir)
-    registry = ToolRegistry()
-    registry.register(
-        ToolSpec(
-            "read_file",
-            "Read a file in the workspace.",
-            {
-                "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
-                "additionalProperties": False,
-            },
-        ),
-        lambda path: store.read_text(path),
-    )
-    registry.register(
-        ToolSpec(
-            "write_file",
-            "Write a file in the workspace.",
-            {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "content": {"type": "string"},
-                },
-                "required": ["path", "content"],
-                "additionalProperties": False,
-            },
-        ),
-        lambda path, content: store.write_text(path, content) or f"Wrote {path}",
-    )
-    registry.register(
-        ToolSpec(
-            "glob",
-            "List files matching a workspace glob.",
-            {
-                "type": "object",
-                "properties": {"pattern": {"type": "string"}},
-                "required": ["pattern"],
-                "additionalProperties": False,
-            },
-        ),
-        lambda pattern: "\n".join(store.list_files(pattern)) or "(no matches)",
-    )
+    mcp = MockMCPHub()
+    registry = mcp.connect("docs")
+    # registry.register(
+    #     ToolSpec(
+    #         "read_file",
+    #         "Read a file in the workspace.",
+    #         {
+    #             "type": "object",
+    #             "properties": {"path": {"type": "string"}},
+    #             "required": ["path"],
+    #             "additionalProperties": False,
+    #         },
+    #     ),
+    #     lambda path: store.read_text(path),
+    # )
+    # registry.register(
+    #     ToolSpec(
+    #         "write_file",
+    #         "Write a file in the workspace.",
+    #         {
+    #             "type": "object",
+    #             "properties": {
+    #                 "path": {"type": "string"},
+    #                 "content": {"type": "string"},
+    #             },
+    #             "required": ["path", "content"],
+    #             "additionalProperties": False,
+    #         },
+    #     ),
+    #     lambda path, content: store.write_text(path, content) or f"Wrote {path}",
+    # )
+    # registry.register(
+    #     ToolSpec(
+    #         "glob",
+    #         "List files matching a workspace glob.",
+    #         {
+    #             "type": "object",
+    #             "properties": {"pattern": {"type": "string"}},
+    #             "required": ["pattern"],
+    #             "additionalProperties": False,
+    #         },
+    #     ),
+    #     lambda pattern: "\n".join(store.list_files(pattern)) or "(no matches)",
+    # )
+
     return registry

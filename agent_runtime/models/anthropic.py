@@ -3,7 +3,15 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from agent_runtime.models.base import ModelRequest, ModelResponse, TextBlock, ToolCall, ToolResult
+from agent_runtime.models.base import (
+    MessageBlock,
+    ModelRequest,
+    ModelResponse,
+    TextBlock,
+    ThinkingBlock,
+    ToolCall,
+    ToolResult,
+)
 
 
 class AnthropicProvider:
@@ -37,10 +45,19 @@ class AnthropicProvider:
         )
         return ModelResponse(blocks=self._parse_content(response.content))
 
-    def _convert_messages(self, messages: list[Any]) -> list[dict[str, Any]]:
-        converted = []
+    def _convert_messages(self, messages: list[MessageBlock | dict[str, Any]]) -> list[dict[str, Any]]:
+        converted: list[dict[str, Any]] = []
+        assistant_buffer: list[dict[str, Any]] = []
+
+        def flush_assistant() -> None:
+            nonlocal assistant_buffer
+            if assistant_buffer:
+                converted.append({"role": "assistant", "content": assistant_buffer})
+                assistant_buffer = []
+
         for message in messages:
             if isinstance(message, ToolResult):
+                flush_assistant()
                 converted.append(
                     {
                         "role": "user",
@@ -53,36 +70,48 @@ class AnthropicProvider:
                         ],
                     }
                 )
+            elif isinstance(message, ThinkingBlock):
+                thinking_block: dict[str, Any] = {
+                    "type": "thinking",
+                    "thinking": message.thinking,
+                }
+                if message.signature:
+                    thinking_block["signature"] = message.signature
+                assistant_buffer.append(thinking_block)
             elif isinstance(message, TextBlock):
-                converted.append({"role": "assistant", "content": message.text})
+                assistant_buffer.append({"type": "text", "text": message.text})
             elif isinstance(message, ToolCall):
-                converted.append(
+                assistant_buffer.append(
                     {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "tool_use",
-                                "id": message.id,
-                                "name": message.name,
-                                "input": message.input,
-                            }
-                        ],
+                        "type": "tool_use",
+                        "id": message.id,
+                        "name": message.name,
+                        "input": message.input,
                     }
                 )
             elif isinstance(message, dict):
+                flush_assistant()
                 converted.append(message)
             else:
+                flush_assistant()
                 converted.append({"role": "user", "content": str(message)})
+
+        flush_assistant()
         return converted
 
-    def _parse_content(self, content: list[Any]) -> list[TextBlock | ToolCall]:
-        blocks: list[TextBlock | ToolCall] = []
+    def _parse_content(self, content: list[Any]) -> list[TextBlock | ThinkingBlock | ToolCall]:
+        blocks: list[TextBlock | ThinkingBlock | ToolCall] = []
         for block in content:
             block_type = getattr(block, "type", None)
             if block_type == "text":
                 blocks.append(TextBlock(getattr(block, "text", "")))
             elif block_type == "thinking":
-                blocks.append(TextBlock(getattr(block, "thinking", "")))
+                blocks.append(
+                    ThinkingBlock(
+                        thinking=getattr(block, "thinking", ""),
+                        signature=getattr(block, "signature", "") or "",
+                    )
+                )
             elif block_type == "tool_use":
                 blocks.append(
                     ToolCall(

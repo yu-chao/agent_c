@@ -103,11 +103,10 @@ def test_anthropic_provider_converts_tool_call_history_to_tool_use():
     ]
 
 
-def test_factory_creates_openai_provider_from_config():
-    provider = create_model_provider(
-        {"model": {"provider": "openai", "name": "gpt-5"}},
-        clients={"openai": object()},
-    )
+def test_factory_creates_openai_provider_from_config(monkeypatch):
+    monkeypatch.setenv("provider", "openai")
+    monkeypatch.setenv("MODEL_ID", "gpt-5")
+    provider = create_model_provider(clients={"openai": object()})
 
     assert isinstance(provider, OpenAIProvider)
     assert provider.model == "gpt-5"
