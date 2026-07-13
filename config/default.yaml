@@ -13,6 +13,15 @@ context:
   limit: 50000
 security:
   require_permission_for_destructive_commands: true
+approval:
+  enabled: true
+  timeout_seconds: 600
+  store_path: .runtime/approvals.db
+  tools:
+    - mcp__PlantMartBusiness__queryProductInfoUsingPOST
+  display_fields:
+    - operateType
+    - skuCode
 mcp:
   enabled_servers:
     - PlantMartBusiness

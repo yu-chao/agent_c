@@ -25,7 +25,13 @@ def main():
     )
     logger.info("agent_runtime_starting gateway=wecom")
     service = BusinessAssistantService()
-    wecom = WeComGateway(service.handle)
+    wecom = WeComGateway(
+        service.handle,
+        approval_decider=service.decide_approval,
+        approval_resumer=service.resume_approval,
+        approval_canceller=service.cancel_approval,
+        recovery_provider=service.recoverable_approvals,
+    )
     asyncio.run(wecom.run_forever())
 
 

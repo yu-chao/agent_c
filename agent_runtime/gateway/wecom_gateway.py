@@ -8,19 +8,23 @@ import mimetypes
 import os
 import uuid
 from pathlib import Path
-from typing import Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from urllib import request
 from urllib.parse import urlparse
 import aiohttp
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from agent_runtime.logging_utils import safe_preview
-from .service import InboundMessage
+from agent_runtime.approval import ApprovalAction, RuntimeIdentity
+from agent_runtime.core import PendingApproval
+from .models import InboundMessage, MessageType
 
 
 
 logger = logging.getLogger(__name__)
 
-MessageHandler = Callable[[InboundMessage], Awaitable[str]]
+MessageHandler = Callable[[InboundMessage], Awaitable[Any]]
+ApprovalDecider = Callable[..., Awaitable[Any]]
+ApprovalResumer = Callable[[str], Awaitable[Any]]
 
 
 class WeComGateway:
@@ -32,6 +36,10 @@ class WeComGateway:
         bot_id: Optional[str] = None,
         secret: Optional[str] = None,
         websocket_url: Optional[str] = None,
+        approval_decider: ApprovalDecider | None = None,
+        approval_resumer: ApprovalResumer | None = None,
+        approval_canceller: Callable[[Any], Awaitable[Any]] | None = None,
+        recovery_provider: Callable[[], list[Any]] | None = None,
     ):
         self.bot_id = (bot_id or os.getenv("WECOM_BOT_ID", "")).strip()
         self.secret = (secret or os.getenv("WECOM_BOT_SECRET", "")).strip()
@@ -39,6 +47,10 @@ class WeComGateway:
             websocket_url or os.getenv("WECOM_WEBSOCKET_URL", "wss://openws.work.weixin.qq.com")
         ).strip()
         self.handler = handler
+        self.approval_decider = approval_decider
+        self.approval_resumer = approval_resumer
+        self.approval_canceller = approval_canceller
+        self.recovery_provider = recovery_provider
         self._ws = None
         self._session = None
         self._reply_req_ids: Dict[str, str] = {}
@@ -55,6 +67,7 @@ class WeComGateway:
                 self._ws = await self._session.ws_connect(self.websocket_url, heartbeat=30)
                 await self._subscribe()
                 logger.info("wecom_subscribed")
+                await self._recover_approvals()
                 heartbeat_task = asyncio.create_task(self._heartbeat_loop())
                 async for msg in self._ws:
                     if msg.type == aiohttp.WSMsgType.TEXT:
@@ -82,6 +95,17 @@ class WeComGateway:
                     await self._session.close()
             await asyncio.sleep(5)
 
+    async def _recover_approvals(self) -> None:
+        if self.recovery_provider is None or self.approval_resumer is None:
+            return
+        for request in self.recovery_provider():
+            asyncio.create_task(
+                self._resume_and_send(
+                    request.id, request.identity.conversation_id
+                ),
+                name=f"recover-approval:{request.id}",
+            )
+
     async def _subscribe(self) -> None:
         request_id = await self._send(
             "aibot_subscribe",
@@ -108,34 +132,229 @@ class WeComGateway:
             await asyncio.sleep(30)
             await self._send("ping", {})
             logger.debug("wecom_heartbeat_sent")
+            await self._recover_approvals()
 
     async def _dispatch(self, payload: Dict[str, object]) -> None:
         command = str(payload.get("command") or payload.get("cmd") or "")
-        if command not in {"aibot_msg_callback", "aibot_callback"}:
-            return
+        if command in {"aibot_msg_callback", "aibot_callback"}:
+            await self._dispatch_message(payload)
+        elif command == "aibot_event_callback":
+            await self._dispatch_event(payload)
+
+    async def _dispatch_message(self, payload: Dict[str, object]) -> None:
         body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
         msg_id = str(body.get("msgid") or uuid.uuid4().hex)
-        req_id = ""
         headers = payload.get("headers")
-        if isinstance(headers, dict):
-            req_id = str(headers.get("req_id") or "")
-        self._reply_req_ids[msg_id] = req_id
+        req_id = str(headers.get("req_id") or "") if isinstance(headers, dict) else ""
         sender = body.get("from") if isinstance(body.get("from"), dict) else {}
-        sender_id = str(sender.get("userid") or "")
+        sender_id = str(sender.get("userid") or body.get("from_user") or "")
         chat_id = str(body.get("chatid") or sender_id)
-        text = self._extract_text(body)
-        image_paths = await self._extract_images(body)
-        logger.info(
-            "wecom_message_received chat_id=%s sender=%s msg_id=%s req_id=%s text=%s images=%s",
-            chat_id,
-            sender_id,
-            msg_id,
-            req_id,
-            text,
-            len(image_paths),
+        message = InboundMessage(
+            platform="wecom",
+            message_id=msg_id,
+            conversation_id=chat_id,
+            sender_id=sender_id,
+            text=self._extract_text(body),
+            message_type=MessageType.TEXT,
+            media_paths=tuple(await self._extract_images(body)),
+            metadata={"request_id": req_id},
         )
-        answer = await self.handler(InboundMessage(session_id=chat_id, text=text, image_paths=image_paths))
-        await self._reply(req_id, chat_id, answer)
+        outcome = await self.handler(message)
+        if isinstance(outcome, PendingApproval):
+            try:
+                await self._send_approval(req_id, chat_id, outcome)
+            except Exception:
+                logger.exception("wecom_approval_card_send_failed approval=%s",
+                                 outcome.request.id)
+                try:
+                    await self._cancel_unsent(outcome.request)
+                except Exception:
+                    logger.exception(
+                        "wecom_approval_cancel_failed approval=%s",
+                        outcome.request.id,
+                    )
+                await self._reply(
+                    req_id, chat_id, "无法发送确认卡片，工具未执行，请稍后重试。"
+                )
+            return
+        await self._reply(req_id, chat_id, str(outcome))
+
+    async def _dispatch_event(self, payload: Dict[str, object]) -> None:
+        body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+        event = body.get("event") if isinstance(body.get("event"), dict) else {}
+        event_type = self._find_event_value(
+            body, "eventtype", "event_type", "eventType"
+        )
+        if event_type != "template_card_event":
+            return
+        msg_id = str(body.get("msgid") or uuid.uuid4().hex)
+        headers = payload.get("headers")
+        req_id = str(headers.get("req_id") or "") if isinstance(headers, dict) else ""
+        sender = body.get("from") if isinstance(body.get("from"), dict) else {}
+        sender_id = str(sender.get("userid") or body.get("from_user") or "")
+        chat_id = str(body.get("chatid") or sender_id)
+        approval_id = str(
+            self._find_event_value(
+                body, "task_id", "taskId"
+            ) or ""
+        )
+        action = str(
+            self._find_event_value(
+                body, "event_key", "eventKey"
+            ) or ""
+        )
+        if not approval_id or action not in {
+            ApprovalAction.CONFIRM,
+            ApprovalAction.REJECT,
+        }:
+            logger.warning(
+                "wecom_approval_event_invalid message=%s has_task_id=%s action=%s",
+                msg_id,
+                bool(approval_id),
+                action,
+            )
+            return
+        logger.info(
+            "wecom_approval_event_received id=%s action=%s actor=%s",
+            approval_id,
+            action,
+            sender_id,
+        )
+        if self.approval_decider is None:
+            await self._update_approval_card(
+                req_id, approval_id, "审批服务不可用", sender_id
+            )
+            return
+        identity = RuntimeIdentity(
+            "wecom", chat_id, sender_id, msg_id, {"request_id": req_id}
+        )
+        decision = await self.approval_decider(
+            approval_id, action, identity, msg_id
+        )
+        if not decision.accepted:
+            title = {
+                "unauthorized": "无权操作",
+                "approval expired": "已过期",
+            }.get(decision.message, "审批已处理")
+            await self._update_approval_card(
+                req_id, approval_id, title, sender_id
+            )
+            return
+        title = (
+            "已确认，正在查询"
+            if action == ApprovalAction.CONFIRM
+            else "已拒绝"
+        )
+        await self._update_approval_card(req_id, approval_id, title)
+        if self.approval_resumer is not None:
+            asyncio.create_task(
+                self._resume_and_send(approval_id, chat_id),
+                name=f"approval:{approval_id}",
+            )
+
+    @staticmethod
+    def _find_event_value(value: object, *keys: str) -> object | None:
+        if isinstance(value, dict):
+            for key in keys:
+                candidate = value.get(key)
+                if candidate not in (None, ""):
+                    return candidate
+            for candidate in value.values():
+                found = WeComGateway._find_event_value(candidate, *keys)
+                if found not in (None, ""):
+                    return found
+        elif isinstance(value, list):
+            for candidate in value:
+                found = WeComGateway._find_event_value(candidate, *keys)
+                if found not in (None, ""):
+                    return found
+        return None
+
+    async def _send_approval(
+        self, req_id: str, chat_id: str, outcome: PendingApproval
+    ) -> None:
+        card = self.build_approval_card(outcome.request)
+        body = {"msgtype": "template_card", "template_card": card}
+        if req_id:
+            await self._send("aibot_respond_msg", body, req_id=req_id)
+        else:
+            await self._send("aibot_send_msg", {"chatid": chat_id, **body})
+
+    async def _cancel_unsent(self, request) -> None:
+        if self.approval_canceller is not None:
+            await self.approval_canceller(request)
+            return
+        if self.approval_decider is None:
+            return
+        await self.approval_decider(
+            request.id,
+            ApprovalAction.REJECT,
+            request.identity,
+            f"card_send_failed_{uuid.uuid4().hex}",
+        )
+
+    async def _resume_and_send(self, approval_id: str, chat_id: str) -> None:
+        try:
+            outcome = await self.approval_resumer(approval_id)
+            if isinstance(outcome, PendingApproval):
+                await self._send_approval("", chat_id, outcome)
+            else:
+                await self._reply("", chat_id, str(outcome))
+        except Exception:
+            logger.exception("wecom_approval_resume_failed approval=%s", approval_id)
+            await self._reply("", chat_id, "审批任务执行失败，请联系管理员处理。")
+
+    async def _update_approval_card(
+        self, req_id: str, approval_id: str, title: str,
+        userid: str | None = None,
+    ) -> None:
+        card = {
+            "card_type": "button_interaction",
+            "main_title": {"title": title[:26]},
+            "task_id": approval_id,
+        }
+        body = {
+            "response_type": "update_template_card",
+            "template_card": card,
+        }
+        if userid:
+            body["userids"] = [userid]
+        await self._send("aibot_respond_update_msg", body, req_id=req_id)
+
+    @staticmethod
+    def build_approval_card(request) -> Dict[str, object]:
+        arguments = request.tool_input
+        operate_type = str(arguments.get("operateType", "未提供"))
+        meanings = {
+            "2": "2 商品新建上架",
+            "3": "3 商品下架",
+            "4": "4 商品更新",
+        }
+        operate_text = meanings.get(operate_type, operate_type)
+        sku_code = WeComGateway._card_value("skuCode", arguments.get("skuCode"))
+        return {
+            "card_type": "button_interaction",
+            "main_title": {
+                "title": "商品信息接口调用",
+                "desc": "请确认是否执行本次调用",
+            },
+            "horizontal_content_list": [
+                {"keyname": "操作", "value": operate_text[:26]},
+                {"keyname": "SKU", "value": sku_code},
+            ],
+            "button_list": [
+                {"text": "确认", "style": 1, "key": "approval.confirm"},
+                {"text": "拒绝", "style": 2, "key": "approval.reject"},
+            ],
+            "task_id": request.id,
+        }
+
+    @staticmethod
+    def _card_value(key: str, value: object) -> str:
+        if any(token in key.lower() for token in ("password", "secret", "token")):
+            return "***"
+        rendered = "未提供" if value is None else str(value)
+        return rendered[:26]
 
     def _extract_text(self, body: Dict[str, object]) -> str:
         text = body.get("text") if isinstance(body.get("text"), dict) else {}

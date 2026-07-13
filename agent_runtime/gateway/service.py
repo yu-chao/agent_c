@@ -1,128 +1,123 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 import logging
-from typing import List
-from dotenv import load_dotenv
 from pathlib import Path
+
+import yaml
+from dotenv import load_dotenv
+
+from agent_runtime.approval import RuntimeIdentity, SQLiteApprovalStore
 from agent_runtime.core import AgentRuntime
+from agent_runtime.gateway.models import InboundMessage
 from agent_runtime.hooks import HookManager
 from agent_runtime.mcp import MCPHub
 from agent_runtime.models import create_model_provider
 from agent_runtime.security import PermissionPolicy
-from agent_runtime.storage import FileStore
-from agent_runtime.tools import ToolRegistry, ToolSpec
-from agent_runtime.logging_utils import safe_preview
-
 
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class InboundMessage:
-    session_id: str
-    text: str = ""
-    image_paths: List[str] = field(default_factory=list)
-
-
 class BusinessAssistantService:
-    def __init__(self):
-        self._dify_conversations: dict[str, str] = {}
+    def __init__(self, runtime: AgentRuntime | None = None):
         load_dotenv()
-        self.runtime = AgentRuntime(
-            model=create_model_provider(),
-            tools=create_default_registry(Path.cwd()),
-            hooks=HookManager(),
-            permission_policy=PermissionPolicy(Path.cwd()),
-            system_prompt="You are a coding agent. Use tools when useful.",
-        )
+        config = _load_config()
+        approval = config.get("approval", {})
+        if runtime is None:
+            enabled = bool(approval.get("enabled", True))
+            store = (
+                SQLiteApprovalStore(approval.get("store_path", ".runtime/approvals.db"))
+                if enabled
+                else None
+            )
+            tools = approval.get("tools", []) if enabled else []
+            runtime = AgentRuntime(
+                model=create_model_provider(),
+                tools=create_default_registry(),
+                hooks=HookManager(),
+                permission_policy=PermissionPolicy(Path.cwd(), tools),
+                system_prompt="You are a coding agent. Use tools when useful.",
+                approval_store=store,
+                approval_timeout_seconds=int(
+                    approval.get("timeout_seconds", 600)
+                ),
+            )
+        self.runtime = runtime
+        store = getattr(self.runtime, "approval_store", None)
+        if store:
+            for request in store.list_uncertain():
+                logger.error(
+                    "approval_result_unknown id=%s tool=%s status=%s",
+                    request.id,
+                    request.tool_name,
+                    request.status,
+                )
 
-    # def handle(self, message: InboundMessage) -> str:
-    #     logger.info(
-    #         "message_received session=%s text=%s images=%s",
-    #         message.session_id,
-    #         safe_preview(message.text, 300),
-    #         len(message.image_paths),
-    #     )
-    #     agent_input = self.vision.merge_image_context(message.text, message.image_paths)
-    #     history = self.memory.get(message.session_id)
-    #     logger.info(
-    #         "message_context_ready session=%s history_count=%s agent_input=%s",
-    #         message.session_id,
-    #         len(history),
-    #         safe_preview(agent_input, 500),
-    #     )
-    #     self.memory.add(message.session_id, "user", agent_input)
-    #     answer = self.agent.run(agent_input, history=history)
-    #     self.memory.add(message.session_id, "assistant", answer)
-    #     logger.info(
-    #         "message_answered session=%s answer=%s memory_count=%s",
-    #         message.session_id,
-    #         safe_preview(answer, 500),
-    #         len(self.memory.get(message.session_id)),
-    #     )
-    #     return answer
-    async def handle(self, message: InboundMessage) -> str:
+    async def handle(self, message: InboundMessage):
         logger.info(
-            "message_received session=%s text=%s images=%s",
-            message.session_id,
-            safe_preview(message.text, 300),
-            len(message.image_paths),
+            "message_received platform=%s conversation=%s sender=%s message=%s",
+            message.platform,
+            message.conversation_id,
+            message.sender_id,
+            message.message_id,
         )
-        agent_input = message.text.strip()
-        if message.image_paths:
-            attachments = "Attachments:\n" + "\n".join(message.image_paths)
-            agent_input = "\n\n".join(part for part in (agent_input, attachments) if part)
-        
-        return await asyncio.to_thread(self.runtime.run_turn, agent_input)
+        identity = RuntimeIdentity(
+            message.platform,
+            message.conversation_id,
+            message.sender_id,
+            message.message_id,
+            message.metadata,
+        )
+        return await asyncio.to_thread(
+            self.runtime.run_turn, message.to_agent_input(), identity
+        )
 
-def create_default_registry(workdir: Path) -> ToolRegistry:
-    store = FileStore(workdir)
-    mcp = MCPHub.from_config()
-    registry = mcp.connect("PlantMartBusiness")
-    # registry.register(
-    #     ToolSpec(
-    #         "read_file",
-    #         "Read a file in the workspace.",
-    #         {
-    #             "type": "object",
-    #             "properties": {"path": {"type": "string"}},
-    #             "required": ["path"],
-    #             "additionalProperties": False,
-    #         },
-    #     ),
-    #     lambda path: store.read_text(path),
-    # )
-    # registry.register(
-    #     ToolSpec(
-    #         "write_file",
-    #         "Write a file in the workspace.",
-    #         {
-    #             "type": "object",
-    #             "properties": {
-    #                 "path": {"type": "string"},
-    #                 "content": {"type": "string"},
-    #             },
-    #             "required": ["path", "content"],
-    #             "additionalProperties": False,
-    #         },
-    #     ),
-    #     lambda path, content: store.write_text(path, content) or f"Wrote {path}",
-    # )
-    # registry.register(
-    #     ToolSpec(
-    #         "glob",
-    #         "List files matching a workspace glob.",
-    #         {
-    #             "type": "object",
-    #             "properties": {"pattern": {"type": "string"}},
-    #             "required": ["pattern"],
-    #             "additionalProperties": False,
-    #         },
-    #     ),
-    #     lambda pattern: "\n".join(store.list_files(pattern)) or "(no matches)",
-    # )
+    async def decide_approval(
+        self, approval_id, action, identity, event_message_id
+    ):
+        store = self.runtime.approval_store
+        if store is None:
+            raise RuntimeError("Approval storage is disabled")
+        decision = await asyncio.to_thread(
+            store.decide, approval_id, action, identity, event_message_id
+        )
+        tool_name = decision.request.tool_name if decision.request else "unknown"
+        logger.info(
+            "approval_decision id=%s tool=%s status=%s actor=%s accepted=%s",
+            approval_id,
+            tool_name,
+            decision.status,
+            identity.sender_id,
+            decision.accepted,
+        )
+        return decision
 
-    return registry
+    async def resume_approval(self, approval_id):
+        return await asyncio.to_thread(self.runtime.resume, approval_id)
+
+    async def cancel_approval(self, request):
+        store = self.runtime.approval_store
+        decision = await asyncio.to_thread(
+            store.decide,
+            request.id,
+            "approval.reject",
+            request.identity,
+            f"card_send_failed_{request.id}",
+        )
+        if decision.accepted:
+            await asyncio.to_thread(store.mark_consumed, request.id)
+        return decision
+
+    def recoverable_approvals(self):
+        return self.runtime.recoverable_approvals()
+
+
+def create_default_registry():
+    return MCPHub.from_config().connect("PlantMartBusiness")
+
+
+def _load_config() -> dict:
+    path = Path(__file__).resolve().parents[2] / "config" / "default.yaml"
+    with path.open("r", encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}

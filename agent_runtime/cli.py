@@ -25,13 +25,18 @@ def _load_config() -> dict:
 
 def main():
     load_dotenv()
+    config = _load_config()
+    approval = config.get("approval", {})
+    approval_tools = (
+        approval.get("tools", []) if approval.get("enabled", True) else []
+    )
     model = create_model_provider()
     registry = create_default_registry(Path.cwd())
     runtime = AgentRuntime(
         model=model,
         tools=registry,
         hooks=HookManager(),
-        permission_policy=PermissionPolicy(Path.cwd()),
+        permission_policy=PermissionPolicy(Path.cwd(), approval_tools),
         system_prompt="You are a coding agent. Use tools when useful.",
     )
 
