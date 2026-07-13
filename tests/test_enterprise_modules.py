@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from agent_runtime.mcp.mock import MockMCPHub
+from agent_runtime.mcp import MCPHub, MCPServerConfig, StreamableHTTPMCPClient
 from agent_runtime.scheduler.cron import cron_matches, validate_cron
 from agent_runtime.tasks.graph import TaskGraph
 
@@ -28,11 +28,60 @@ def test_cron_matches_step_expression():
     assert not cron_matches("*/15 * * * *", datetime(2026, 7, 5, 12, 31))
 
 
-def test_mock_mcp_hub_registers_docs_tools_with_registry():
-    hub = MockMCPHub()
-    registry = hub.connect("docs")
+def test_mcp_hub_loads_and_calls_remote_tools():
+    config = MCPServerConfig(
+        name="business",
+        type="streamable-http",
+        url="https://mcp.example.invalid",
+    )
+    client = StreamableHTTPMCPClient(config)
+    requests = []
+
+    async def fake_post(message, include_protocol_header, expect_response=True):
+        requests.append((message, include_protocol_header, expect_response))
+        if message["method"] == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": message["id"],
+                "result": {"protocolVersion": "2025-06-18"},
+            }
+        if message["method"] == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": message["id"],
+                "result": {
+                    "tools": [
+                        {
+                            "name": "search",
+                            "description": "Search products",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"query": {"type": "string"}},
+                            },
+                        }
+                    ]
+                },
+            }
+        if message["method"] == "tools/call":
+            return {
+                "jsonrpc": "2.0",
+                "id": message["id"],
+                "result": {"content": [{"type": "text", "text": "matched"}]},
+            }
+        return {}
+
+    client._post = fake_post
+    hub = MCPHub([config])
+    hub._clients["business"] = client
+    registry = hub.connect("business")
 
     tools, handlers = registry.assemble()
 
-    assert tools[0].name == "mcp__docs__search"
-    assert handlers["mcp__docs__search"]({"query": "agent"}) == "[docs] Found results for 'agent'"
+    assert tools[0].name == "mcp__business__search"
+    assert handlers["mcp__business__search"]({"query": "pump"}) == "matched"
+    assert [request[0]["method"] for request in requests] == [
+        "initialize",
+        "notifications/initialized",
+        "tools/list",
+        "tools/call",
+    ]

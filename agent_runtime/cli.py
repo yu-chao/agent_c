@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from agent_runtime.core import AgentRuntime
 from agent_runtime.hooks import HookManager
-from agent_runtime.mcp.mock import MockMCPHub
+from agent_runtime.mcp import MCPHub
 from agent_runtime.models import create_model_provider
 from agent_runtime.security import PermissionPolicy
 from agent_runtime.storage import FileStore
@@ -48,8 +48,8 @@ def main():
 
 def create_default_registry(workdir: Path) -> ToolRegistry:
     store = FileStore(workdir)
-    mcp = MockMCPHub()
-    registry = mcp.connect("docs")
+    mcp = MCPHub.from_config()
+    registry = mcp.connect("PlantMartBusiness")
     # registry.register(
     #     ToolSpec(
     #         "read_file",

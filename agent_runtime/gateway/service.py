@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from agent_runtime.core import AgentRuntime
 from agent_runtime.hooks import HookManager
-from agent_runtime.mcp.mock import MockMCPHub
+from agent_runtime.mcp import MCPHub
 from agent_runtime.models import create_model_provider
 from agent_runtime.security import PermissionPolicy
 from agent_runtime.storage import FileStore
@@ -76,20 +76,12 @@ class BusinessAssistantService:
             attachments = "Attachments:\n" + "\n".join(message.image_paths)
             agent_input = "\n\n".join(part for part in (agent_input, attachments) if part)
         
-        self.runtime = AgentRuntime(
-            model=create_model_provider(),
-            tools=create_default_registry(Path.cwd()),
-            hooks=HookManager(),
-            permission_policy=PermissionPolicy(Path.cwd()),
-            system_prompt="You are a coding agent. Use tools when useful.",
-        )
-        
         return await asyncio.to_thread(self.runtime.run_turn, agent_input)
 
 def create_default_registry(workdir: Path) -> ToolRegistry:
     store = FileStore(workdir)
-    mcp = MockMCPHub()
-    registry = mcp.connect("docs")
+    mcp = MCPHub.from_config()
+    registry = mcp.connect("PlantMartBusiness")
     # registry.register(
     #     ToolSpec(
     #         "read_file",
