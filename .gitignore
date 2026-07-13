@@ -5,6 +5,7 @@ __pycache__/
 *$py.class
 .env
 .env.*
+!.env.example
 .task_outputs/
 .transcripts/
 .memory/
