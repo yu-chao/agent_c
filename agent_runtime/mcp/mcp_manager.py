@@ -166,6 +166,10 @@ class MCPHub:
         self._clients: dict[str, StreamableHTTPMCPClient] = {}
 
     @classmethod
+    def from_servers(cls, servers: tuple[dict[str, Any], ...]) -> 'MCPHub':
+        return cls([MCPServerConfig.from_dict(server) for server in servers])
+
+    @classmethod
     def from_config(cls, path: Path | None = None) -> "MCPHub":
         config_path = path or Path(__file__).resolve().parents[2] / "config" / "default.yaml"
         with config_path.open("r", encoding="utf-8") as config_file:
@@ -181,6 +185,12 @@ class MCPHub:
         client = self._clients.setdefault(name, StreamableHTTPMCPClient(config))
         registry = ToolRegistry()
         registry.register_mcp_tools(name, client.list_tools(), client.call_tool)
+        return registry
+
+    def connect_enabled(self, names: tuple[str, ...]) -> ToolRegistry:
+        registry = ToolRegistry()
+        for name in names:
+            registry.extend(self.connect(name))
         return registry
 
 

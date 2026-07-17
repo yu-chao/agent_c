@@ -1,6 +1,6 @@
 # 通用 Agent Runtime
 
-这是一个可扩展的多供应商 Agent 运行时。旧版 `code.py` 中的教学型单文件 harness 已拆成包结构：模型适配、工具注册、hook、权限、存储、任务图、cron、MCP mock 和 CLI 入口各自独立。
+这是一个可扩展的多供应商 Agent 运行时。项目采用“入口与装配层 → 应用层 → 核心协议与能力端口 ← 基础设施适配器”的单向依赖结构。
 
 ## 运行
 
@@ -10,13 +10,11 @@ uv run python -m agent_runtime --provider openai --model gpt-5
 uv run python -m agent_runtime --provider anthropic
 ```
 
-也可以继续运行：
+企业微信长连接入口：
 
 ```sh
-python code.py --provider openai
+uv run agent-runtime-wecom
 ```
-
-但推荐使用 `python -m agent_runtime`。
 
 ## 架构
 
@@ -37,17 +35,21 @@ user input
 
 核心模块：
 
-- `agent_runtime.models`: 统一模型接口和供应商适配器。
+- `agent_runtime.contracts`: 与供应商无关的消息、模型和工具协议。
+- `agent_runtime.models`: OpenAI、Anthropic 等模型供应商适配器。
 - `agent_runtime.models.openai`: OpenAI Responses API 适配器，使用 function tools 和 `function_call_output` 回传工具结果。
 - `agent_runtime.models.anthropic`: Anthropic Messages API 适配器。
 - `agent_runtime.tools`: 内置工具和 MCP 工具统一注册。
-- `agent_runtime.core`: provider 无关的 agent loop。
+- `agent_runtime.core`: provider 无关的 agent loop、能力端口和工具执行。
+- `agent_runtime.application`: 渠道无关的应用服务与审批用例。
+- `agent_runtime.bootstrap`: 统一依赖装配。
+- `agent_runtime.settings`: YAML 与环境变量配置入口。
 - `agent_runtime.hooks`: `UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop` 扩展点。
 - `agent_runtime.security`: 命令、路径和 MCP 破坏性工具权限策略。
 - `agent_runtime.storage`: 文件存储接口和本地实现。
 - `agent_runtime.tasks`: 可持久化 task graph。
 - `agent_runtime.scheduler`: cron 表达式校验与匹配。
-- `agent_runtime.mcp`: mock MCP hub，用于动态工具接入演示。
+- `agent_runtime.mcp`: MCP Streamable HTTP 客户端和动态工具接入。
 
 ## 多供应商模型层
 

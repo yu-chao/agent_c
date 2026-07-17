@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
-import mimetypes
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
-from urllib import request
-from urllib.parse import urlparse
+from typing import Any, Awaitable, Callable, Dict, Optional
 import aiohttp
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from agent_runtime.logging_utils import safe_preview
 from agent_runtime.approval import ApprovalAction, RuntimeIdentity
 from agent_runtime.core import PendingApproval
-from .models import InboundMessage, MessageType
+from .models import InboundMessage, MessageType, OutboundMessage
+from .wecom_components import (
+    WeComApprovalPresenter,
+    WeComMediaStore,
+    WeComMessageMapper,
+)
 
 
 
@@ -30,9 +30,11 @@ ApprovalResumer = Callable[[str], Awaitable[Any]]
 class WeComGateway:
     """Minimal Enterprise WeChat AI Bot WebSocket client for this prototype."""
 
+    platform = "wecom"
+
     def __init__(
         self,
-        handler: MessageHandler,
+        handler: MessageHandler | None = None,
         bot_id: Optional[str] = None,
         secret: Optional[str] = None,
         websocket_url: Optional[str] = None,
@@ -55,6 +57,20 @@ class WeComGateway:
         self._session = None
         self._reply_req_ids: Dict[str, str] = {}
         self.cache_dir = Path(".cache/wecom-images")
+        self.message_mapper = WeComMessageMapper()
+        self.approval_presenter = WeComApprovalPresenter()
+        self.media_store = WeComMediaStore(self.cache_dir)
+
+    def set_message_handler(self, handler: MessageHandler) -> None:
+        self.handler = handler
+
+    async def send(self, message: OutboundMessage) -> None:
+        req_id = str(message.metadata.get("request_id") or "")
+        await self._reply(req_id, message.conversation_id, message.text)
+
+    @staticmethod
+    def parse(payload: dict[str, Any]) -> InboundMessage:
+        return WeComMessageMapper.parse(payload)
 
     async def run_forever(self) -> None:
         if not self.bot_id or not self.secret:
@@ -64,7 +80,10 @@ class WeComGateway:
             try:
                 self._session = aiohttp.ClientSession()
                 logger.info("wecom_connecting url=%s bot_id=%s", self.websocket_url, self.bot_id)
-                self._ws = await self._session.ws_connect(self.websocket_url, heartbeat=30)
+                # WeCom uses the application-level ping sent by _heartbeat_loop.
+                # aiohttp heartbeat expects a WebSocket PONG and closes this
+                # connection when WeCom does not send one.
+                self._ws = await self._session.ws_connect(self.websocket_url)
                 await self._subscribe()
                 logger.info("wecom_subscribed")
                 await self._recover_approvals()
@@ -159,6 +178,8 @@ class WeComGateway:
             media_paths=tuple(await self._extract_images(body)),
             metadata={"request_id": req_id},
         )
+        if self.handler is None:
+            raise RuntimeError("WeCom gateway has no message handler")
         outcome = await self.handler(message)
         if isinstance(outcome, PendingApproval):
             try:
@@ -177,7 +198,8 @@ class WeComGateway:
                     req_id, chat_id, "无法发送确认卡片，工具未执行，请稍后重试。"
                 )
             return
-        await self._reply(req_id, chat_id, str(outcome))
+        content = outcome.text if isinstance(outcome, OutboundMessage) else str(outcome)
+        await self._reply(req_id, chat_id, content)
 
     async def _dispatch_event(self, payload: Dict[str, object]) -> None:
         body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
@@ -185,6 +207,12 @@ class WeComGateway:
         event_type = self._find_event_value(
             body, "eventtype", "event_type", "eventType"
         )
+        if event_type == "disconnected_event":
+            logger.warning(
+                "wecom_disconnected_event_received; check whether another instance "
+                "is connected with the same bot_id"
+            )
+            return
         if event_type != "template_card_event":
             return
         msg_id = str(body.get("msgid") or uuid.uuid4().hex)
@@ -254,21 +282,7 @@ class WeComGateway:
 
     @staticmethod
     def _find_event_value(value: object, *keys: str) -> object | None:
-        if isinstance(value, dict):
-            for key in keys:
-                candidate = value.get(key)
-                if candidate not in (None, ""):
-                    return candidate
-            for candidate in value.values():
-                found = WeComGateway._find_event_value(candidate, *keys)
-                if found not in (None, ""):
-                    return found
-        elif isinstance(value, list):
-            for candidate in value:
-                found = WeComGateway._find_event_value(candidate, *keys)
-                if found not in (None, ""):
-                    return found
-        return None
+        return WeComMessageMapper.find_event_value(value, *keys)
 
     async def _send_approval(
         self, req_id: str, chat_id: str, outcome: PendingApproval
@@ -323,153 +337,21 @@ class WeComGateway:
 
     @staticmethod
     def build_approval_card(request) -> Dict[str, object]:
-        arguments = request.tool_input
-        operate_type = str(arguments.get("operateType", "未提供"))
-        meanings = {
-            "2": "2 商品新建上架",
-            "3": "3 商品下架",
-            "4": "4 商品更新",
-        }
-        operate_text = meanings.get(operate_type, operate_type)
-        sku_code = WeComGateway._card_value("skuCode", arguments.get("skuCode"))
-        return {
-            "card_type": "button_interaction",
-            "main_title": {
-                "title": "商品信息接口调用",
-                "desc": "请确认是否执行本次调用",
-            },
-            "horizontal_content_list": [
-                {"keyname": "操作", "value": operate_text[:26]},
-                {"keyname": "SKU", "value": sku_code},
-            ],
-            "button_list": [
-                {"text": "确认", "style": 1, "key": "approval.confirm"},
-                {"text": "拒绝", "style": 2, "key": "approval.reject"},
-            ],
-            "task_id": request.id,
-        }
+        return WeComApprovalPresenter.build_card(request)
 
     @staticmethod
     def _card_value(key: str, value: object) -> str:
-        if any(token in key.lower() for token in ("password", "secret", "token")):
-            return "***"
-        rendered = "未提供" if value is None else str(value)
-        return rendered[:26]
+        return WeComApprovalPresenter.card_value(key, value)
 
     def _extract_text(self, body: Dict[str, object]) -> str:
-        text = body.get("text") if isinstance(body.get("text"), dict) else {}
-        return str(text.get("content") or "").strip()
+        return WeComMessageMapper.parse(body).text
 
-    async def _extract_images(self, body: Dict[str, object]) -> List[str]:
-        images: List[str] = []
-        image = body.get("image") if isinstance(body.get("image"), dict) else None
-        if image:
-            path = await self._cache_image(image)
-            if path:
-                images.append(path)
-        return images
-
-    async def _cache_image(self, image: Dict[str, object]) -> Optional[str]:
-        data = image.get("base64") or image.get("data")
-        if isinstance(data, str) and data:
-            return self._write_cached_image(base64.b64decode(data), ".png")
-
-        url = str(image.get("url") or "").strip()
-        if not url:
-            return None
-        try:
-            raw, headers = await self._download_remote_bytes(url)
-            aes_key = str(image.get("aeskey") or image.get("aes_key") or "").strip()
-            if aes_key:
-                raw = self._decrypt_file_bytes(raw, aes_key)
-            content_type = str(headers.get("content-type") or "").split(";", 1)[0].strip()
-            ext = self._guess_image_extension(url, content_type, raw)
-            return self._write_cached_image(raw, ext)
-        except Exception:
-            logger.exception("wecom_image_cache_failed url=%s", url)
-            return None
-
-    def _write_cached_image(self, data: bytes, extension: str) -> str:
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        suffix = extension if extension.startswith(".") else f".{extension}"
-        path = self.cache_dir / f"{uuid.uuid4().hex}{suffix}"
-        path.write_bytes(data)
-        logger.info("wecom_image_cached path=%s bytes=%s", path, len(data))
-        return str(path)
-
-    async def _download_remote_bytes(self, url: str, max_bytes: int = 20 * 1024 * 1024) -> Tuple[bytes, Dict[str, str]]:
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
-            raise ValueError(f"Unsupported media URL scheme: {parsed.scheme}")
-
-        def download() -> Tuple[bytes, Dict[str, str]]:
-            req = request.Request(
-                url,
-                headers={"User-Agent": "AgentX/0.1", "Accept": "*/*"},
-                method="GET",
-            )
-            with request.urlopen(req, timeout=30) as response:
-                headers = {key.lower(): value for key, value in response.headers.items()}
-                content_length = headers.get("content-length")
-                if content_length and content_length.isdigit() and int(content_length) > max_bytes:
-                    raise ValueError(f"Remote image exceeds limit: {content_length} bytes")
-                data = response.read(max_bytes + 1)
-                if len(data) > max_bytes:
-                    raise ValueError(f"Remote image exceeds limit: {max_bytes} bytes")
-                return data, headers
-
-        return await asyncio.to_thread(download)
-
-    @staticmethod
-    def _decrypt_file_bytes(encrypted_data: bytes, aes_key: str) -> bytes:
-        if not encrypted_data:
-            raise ValueError("encrypted_data is empty")
-        if not aes_key:
-            raise ValueError("aes_key is required")
-
-        key = WeComGateway._decode_aes_key(aes_key)
-        if len(key) != 32:
-            raise ValueError(f"Invalid WeCom AES key length: expected 32 bytes, got {len(key)}")
-
-       
-        cipher = Cipher(algorithms.AES(key), modes.CBC(key[:16]))
-        decryptor = cipher.decryptor()
-        decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
-        pad_len = decrypted[-1]
-        if pad_len < 1 or pad_len > 32 or pad_len > len(decrypted):
-            raise ValueError(f"Invalid PKCS#7 padding value: {pad_len}")
-        if any(byte != pad_len for byte in decrypted[-pad_len:]):
-            raise ValueError("Invalid PKCS#7 padding: padding bytes mismatch")
-        return decrypted[:-pad_len]
-
-    @staticmethod
-    def _decode_aes_key(aes_key: str) -> bytes:
-        normalized = str(aes_key or "").strip()
-        if not normalized:
-            raise ValueError("aes_key is required")
-        normalized += "=" * (-len(normalized) % 4)
-        try:
-            return base64.b64decode(normalized)
-        except Exception:
-            return base64.urlsafe_b64decode(normalized)
+    async def _extract_images(self, body: Dict[str, object]) -> list[str]:
+        return await self.media_store.extract_images(body)
 
     @staticmethod
     def _guess_image_extension(url: str, content_type: str, data: bytes) -> str:
-        ext = mimetypes.guess_extension(content_type) if content_type else None
-        if ext:
-            return ext
-        path_ext = Path(urlparse(url).path).suffix
-        if path_ext:
-            return path_ext
-        if data.startswith(b"\x89PNG\r\n\x1a\n"):
-            return ".png"
-        if data.startswith(b"\xff\xd8\xff"):
-            return ".jpg"
-        if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
-            return ".gif"
-        if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-            return ".webp"
-        return ".jpg"
+        return WeComMediaStore.guess_extension(url, content_type, data)
 
     async def _reply(self, req_id: str, chat_id: str, content: str) -> None:
         if req_id:

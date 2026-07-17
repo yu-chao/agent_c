@@ -24,6 +24,19 @@ class FakeWebSocket:
         return SimpleNamespace(type=aiohttp.WSMsgType.TEXT, data=json.dumps(self.payload))
 
 
+class FakeSession:
+    def __init__(self, websocket):
+        self.websocket = websocket
+        self.connect_kwargs = None
+
+    async def ws_connect(self, url, **kwargs):
+        self.connect_kwargs = kwargs
+        return self.websocket
+
+    async def close(self):
+        return None
+
+
 def test_subscribe_waits_for_successful_acknowledgement():
     gateway = WeComGateway(_handler, bot_id="bot", secret="secret")
     gateway._ws = FakeWebSocket({"body": {"errcode": 0}})
@@ -60,6 +73,40 @@ def test_application_heartbeat_sends_ping(monkeypatch):
         asyncio.run(gateway._heartbeat_loop())
 
     assert commands == [("ping", {})]
+
+
+def test_run_forever_does_not_enable_websocket_protocol_heartbeat(monkeypatch):
+    websocket = FakeWebSocket({"body": {"errcode": 0}})
+    session = FakeSession(websocket)
+    gateway = WeComGateway(_handler, bot_id="bot", secret="secret")
+
+    monkeypatch.setattr(aiohttp, "ClientSession", lambda: session)
+
+    async def stop_after_subscribe():
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(gateway, "_recover_approvals", stop_after_subscribe)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(gateway.run_forever())
+
+    assert session.connect_kwargs == {}
+
+
+def test_disconnected_event_is_logged(caplog):
+    gateway = WeComGateway(_handler, bot_id="bot", secret="secret")
+
+    asyncio.run(
+        gateway._dispatch(
+            {
+                "cmd": "aibot_event_callback",
+                "body": {"event": {"eventtype": "disconnected_event"}},
+            }
+        )
+    )
+
+    assert "another instance" in caplog.text
+
 
 
 def test_credentials_are_loaded_from_environment(monkeypatch):

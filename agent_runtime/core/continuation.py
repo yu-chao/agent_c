@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_runtime.models import TextBlock, ThinkingBlock, ToolCall, ToolResult
+from agent_runtime.contracts import TextBlock, ThinkingBlock, ToolCall, ToolResult
 
 
 def encode_blocks(blocks: list[Any]) -> list[dict[str, Any]]:

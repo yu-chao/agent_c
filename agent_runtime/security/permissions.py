@@ -4,7 +4,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from enum import StrEnum
 
-from agent_runtime.models import ToolCall
+from agent_runtime.contracts import ToolCall
 
 
 class PermissionAction(StrEnum):
