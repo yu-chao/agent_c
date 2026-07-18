@@ -35,6 +35,14 @@ class AssistantService:
                     request.tool_name,
                     request.status,
                 )
+        session_store = self.runtime.session_store
+        if session_store:
+            for run in session_store.interrupt_incomplete_runs():
+                logger.warning(
+                    'run_interrupted_on_startup id=%s session=%s',
+                    run.id,
+                    run.session_id,
+                )
 
     async def handle(self, message: InboundMessage):
         identity = RuntimeIdentity(
@@ -88,3 +96,10 @@ class AssistantService:
 
     def recoverable_approvals(self):
         return self.runtime.recoverable_approvals()
+
+    def recoverable_runs(self):
+        store = self.runtime.session_store
+        return store.list_recoverable_runs() if store else []
+
+    async def resume_run(self, run_id):
+        return await asyncio.to_thread(self.runtime.resume_run, run_id)

@@ -15,6 +15,7 @@ class SQLiteApprovalStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
+            version = db.execute("PRAGMA user_version").fetchone()[0]
             db.executescript("""
             CREATE TABLE IF NOT EXISTS approvals (
               id TEXT PRIMARY KEY, platform TEXT, conversation_id TEXT,
@@ -27,17 +28,54 @@ class SQLiteApprovalStore:
               ON approvals(status,resumed_at);
             CREATE TABLE IF NOT EXISTS approval_events (
               message_id TEXT PRIMARY KEY, approval_id TEXT, created_at TEXT);
+            CREATE TABLE IF NOT EXISTS approval_links (
+              run_id TEXT NOT NULL, tool_call_id TEXT NOT NULL,
+              approval_id TEXT NOT NULL UNIQUE,
+              PRIMARY KEY(run_id, tool_call_id),
+              FOREIGN KEY(approval_id) REFERENCES approvals(id));
             """)
+            if version < 1:
+                db.execute("BEGIN IMMEDIATE")
+                rows = db.execute(
+                    "SELECT id,tool_call_id,continuation_json FROM approvals"
+                ).fetchall()
+                for row in rows:
+                    try:
+                        continuation = json.loads(row["continuation_json"])
+                    except (TypeError, ValueError):
+                        continue
+                    run_id = (
+                        continuation.get("run_id")
+                        if isinstance(continuation, dict) else None
+                    )
+                    if isinstance(run_id, str) and run_id and row["tool_call_id"]:
+                        db.execute(
+                            "INSERT OR IGNORE INTO approval_links VALUES(?,?,?)",
+                            (run_id, row["tool_call_id"], row["id"]),
+                        )
+                db.execute("PRAGMA user_version=1")
 
     def _connect(self):
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA busy_timeout=10000")
+        db.execute("PRAGMA foreign_keys=ON")
         return db
 
     def create(self, item: ApprovalRequest):
         i = item.identity
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            run_id = item.continuation.get("run_id")
+            if run_id:
+                existing = db.execute(
+                    "SELECT approvals.* FROM approval_links "
+                    "JOIN approvals ON approvals.id=approval_links.approval_id "
+                    "WHERE approval_links.run_id=? AND approval_links.tool_call_id=?",
+                    (run_id, item.tool_call_id),
+                ).fetchone()
+                if existing:
+                    return _request(existing)
             db.execute(
                 "INSERT INTO approvals VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,NULL)",
                 (item.id, i.platform, i.conversation_id, i.sender_id, i.message_id,
@@ -45,6 +83,11 @@ class SQLiteApprovalStore:
                  _json(item.tool_input), item.arguments_hash,
                  _json(item.continuation), item.status, _time(item.created_at),
                  _time(item.expires_at)))
+            if run_id:
+                db.execute(
+                    "INSERT INTO approval_links VALUES(?,?,?)",
+                    (run_id, item.tool_call_id, item.id),
+                )
         return item
 
     def get(self, approval_id: str):

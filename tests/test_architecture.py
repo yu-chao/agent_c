@@ -5,11 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.bootstrap import build_tool_registry
+from agent_runtime.bootstrap import build_runtime, build_tool_registry
 from agent_runtime.gateway import WeComGateway
 from agent_runtime.gateway.wecom_gateway import WeComGateway as ConcreteWeComGateway
 from agent_runtime.settings import (
     MCPSettings,
+    ApprovalSettings,
+    ContextSettings,
+    ModelSettings,
+    SessionSettings,
     Settings,
     load_settings,
 )
@@ -22,6 +26,7 @@ FORBIDDEN_CORE_IMPORTS = (
     'agent_runtime.models.openai',
     'agent_runtime.models.anthropic',
     'agent_runtime.approval.store',
+    'agent_runtime.sessions',
 )
 
 
@@ -88,3 +93,56 @@ def test_bootstrap_rejects_unknown_enabled_mcp_server():
     )
     with pytest.raises(ValueError, match='Unknown enabled MCP servers'):
         build_tool_registry(settings)
+
+
+def test_settings_parse_session_and_short_term_context(tmp_path):
+    config = tmp_path / 'settings.yaml'
+    config.write_text(
+        'session:\n  enabled: true\n  store_path: data/sessions.db\n'
+        'context:\n  recent_message_limit: 12\n',
+        encoding='utf-8',
+    )
+
+    settings = load_settings(config)
+
+    assert settings.session == SessionSettings(
+        enabled=True, store_path=Path('data/sessions.db'), lease_seconds=30
+    )
+    assert settings.context == ContextSettings(recent_message_limit=12)
+
+
+@pytest.mark.parametrize(
+    ('content', 'message'),
+    (
+        ('session:\n  lease_seconds: 0\n', 'lease_seconds'),
+        ('context:\n  recent_message_limit: -1\n', 'recent_message_limit'),
+    ),
+)
+def test_settings_reject_invalid_session_runtime_values(
+    tmp_path, content, message
+):
+    config = tmp_path / 'settings.yaml'
+    config.write_text(content, encoding='utf-8')
+
+    with pytest.raises(ValueError, match=message):
+        load_settings(config)
+
+
+def test_bootstrap_enables_persistent_sessions(tmp_path):
+    settings = Settings(
+        model=ModelSettings('openai', 'test-model'),
+        approval=ApprovalSettings(enabled=False),
+        session=SessionSettings(
+            enabled=True, store_path=Path('state/sessions.db')
+        ),
+        context=ContextSettings(recent_message_limit=7),
+    )
+
+    runtime = build_runtime(
+        settings=settings,
+        workdir=tmp_path,
+        clients={'openai': object()},
+    )
+
+    assert runtime.session_store.path == tmp_path / 'state/sessions.db'
+    assert runtime.recent_message_limit == 7

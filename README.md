@@ -1,5 +1,39 @@
 # 通用 Agent Runtime
 
+## 持久化会话与安全恢复
+
+运行时默认使用 `.runtime/sessions.db` 保存会话状态。企业网关以
+`platform + conversation_id` 标识会话，以 `platform + message_id` 保证入站消息
+幂等；CLI 可使用 `--session` 选择持久化会话：
+
+```sh
+uv run python -m agent_runtime --provider openai --session project-a
+```
+
+每个用户请求对应一个独立 Run。运行时只把最近
+`context.recent_message_limit` 条用户和助手消息装入模型上下文，工具调用的完整
+中间状态保存在当前 Run 的检查点中。模型调用前、工具执行前和最终响应落库前
+都会保存检查点。
+
+进程启动时，只有当前 owner 遗留或租约已经过期的 `running` Run 会转换为
+`interrupted`，其他实例仍持有有效租约的 Run 不会被误回收。长任务可通过
+运行时会在模型和工具调用期间自动发送 heartbeat（心跳）续租；`execution_token`
+会阻止租约过期后的旧 worker 继续保存 checkpoint 或完成 Run。应用层可以通过
+`AssistantService.recoverable_runs()` 查询，再调用 `resume_run(run_id)` 恢复。
+已经完成的工具结果会直接复用；崩溃时仍处于 `running` 的工具被视为结果未知，
+运行时会禁止自动重放，并把该状态反馈给模型或交由人工处理。
+
+配置示例：
+
+```yaml
+session:
+  enabled: true
+  store_path: .runtime/sessions.db
+  lease_seconds: 30
+context:
+  recent_message_limit: 20
+```
+
 这是一个可扩展的多供应商 Agent 运行时。项目采用“入口与装配层 → 应用层 → 核心协议与能力端口 ← 基础设施适配器”的单向依赖结构。
 
 ## 运行

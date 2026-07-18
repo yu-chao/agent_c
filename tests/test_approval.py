@@ -1,8 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+import json
+import sqlite3
 
 from agent_runtime.approval import (
     ApprovalAction,
+    ApprovalCoordinator,
     ApprovalRequest,
     ApprovalStatus,
     RuntimeIdentity,
@@ -15,6 +18,30 @@ from agent_runtime.tools import ToolRegistry, ToolSpec
 
 
 TOOL = "mcp__PlantMartBusiness__queryProductInfoUsingPOST"
+
+
+def test_store_upgrade_backfills_approval_links_without_duplicates(tmp_path):
+    path = tmp_path / "approvals.db"
+    SQLiteApprovalStore(path)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO approvals(id,platform,conversation_id,sender_id,message_id,"
+            "metadata_json,tool_call_id,tool_name,tool_input_json,arguments_hash,"
+            "continuation_json,status,created_at,expires_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("old-1", "wecom", "chat", "user", "message", "{}", "call-1",
+             "lookup", "{}", "hash", json.dumps({"run_id": "run-1"}),
+             "pending", "2025-01-01T00:00:00+00:00",
+             "2025-01-01T01:00:00+00:00"),
+        )
+        db.execute("PRAGMA user_version=0")
+
+    SQLiteApprovalStore(path)
+    SQLiteApprovalStore(path)
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT run_id,tool_call_id,approval_id FROM approval_links"
+        ).fetchall() == [("run-1", "call-1", "old-1")]
 
 
 class FakeModel:
@@ -134,6 +161,22 @@ def test_store_rejects_wrong_identity_and_deduplicates_concurrent_clicks(tmp_pat
     assert store.claim_execution(request.id) is not None
     assert store.claim_execution(request.id) is None
     assert [item.id for item in store.list_uncertain()] == [request.id]
+
+
+def test_store_deduplicates_approval_for_same_run_and_tool_call(tmp_path):
+    store = SQLiteApprovalStore(tmp_path / "approvals.db")
+    coordinator = ApprovalCoordinator(store)
+    call = ToolCall("call-1", "deploy", {"environment": "prod"})
+    continuation = {"run_id": "run-1", "remaining_calls": []}
+
+    first = coordinator.create_request(
+        identity=identity(), call=call, continuation=continuation
+    )
+    second = coordinator.create_request(
+        identity=identity(), call=call, continuation=continuation
+    )
+
+    assert second.id == first.id
 
 
 def test_store_expires_pending_requests(tmp_path):

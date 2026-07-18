@@ -4,6 +4,7 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Iterable
 
+from agent_runtime.approval import RuntimeIdentity
 from agent_runtime.core import AgentRuntime
 from .base import MessageGateway
 from .models import InboundMessage, OutboundMessage
@@ -20,8 +21,19 @@ class GatewayRunner:
             gateway.set_message_handler(self.process)
 
     async def process(self, message: InboundMessage) -> OutboundMessage:
+        identity = RuntimeIdentity(
+            message.platform,
+            message.conversation_id,
+            message.sender_id,
+            message.message_id,
+            message.metadata,
+        )
         async with self._session_locks[message.session_id]:
-            answer = await asyncio.to_thread(self.runtime.run_turn, message.to_agent_input())
+            answer = await asyncio.to_thread(
+                self.runtime.run_turn,
+                message.to_agent_input(),
+                identity,
+            )
         return OutboundMessage(message.conversation_id, answer, message.message_id, message.metadata)
 
     async def run_forever(self) -> None:

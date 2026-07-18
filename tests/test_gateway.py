@@ -10,8 +10,8 @@ class FakeRuntime:
     def __init__(self):
         self.inputs = []
 
-    def run_turn(self, value):
-        self.inputs.append(value)
+    def run_turn(self, value, identity):
+        self.inputs.append((value, identity))
         return f"answer: {value}"
 
 
@@ -19,7 +19,11 @@ def test_runner_routes_message_through_agent_loop():
     runtime = FakeRuntime()
     runner = GatewayRunner(runtime, [])
     response = asyncio.run(runner.process(InboundMessage("wecom", "m1", "chat1", "user1", "hello")))
-    assert runtime.inputs == ["hello"]
+    assert len(runtime.inputs) == 1
+    assert runtime.inputs[0][0] == "hello"
+    assert runtime.inputs[0][1].platform == "wecom"
+    assert runtime.inputs[0][1].conversation_id == "chat1"
+    assert runtime.inputs[0][1].message_id == "m1"
     assert response.text == "answer: hello"
     assert response.reply_to == "m1"
 

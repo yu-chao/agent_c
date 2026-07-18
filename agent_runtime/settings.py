@@ -30,10 +30,34 @@ class MCPSettings:
 
 
 @dataclass(frozen=True)
+class SessionSettings:
+    enabled: bool = True
+    store_path: Path = Path('.runtime/sessions.db')
+    lease_seconds: int = 30
+
+    def __post_init__(self):
+        if self.lease_seconds <= 0:
+            raise ValueError('session.lease_seconds must be greater than zero')
+
+
+@dataclass(frozen=True)
+class ContextSettings:
+    recent_message_limit: int = 20
+
+    def __post_init__(self):
+        if self.recent_message_limit < 0:
+            raise ValueError(
+                'context.recent_message_limit must not be negative'
+            )
+
+
+@dataclass(frozen=True)
 class Settings:
     model: ModelSettings = field(default_factory=ModelSettings)
     approval: ApprovalSettings = field(default_factory=ApprovalSettings)
     mcp: MCPSettings = field(default_factory=MCPSettings)
+    session: SessionSettings = field(default_factory=SessionSettings)
+    context: ContextSettings = field(default_factory=ContextSettings)
     system_prompt: str = 'You are a coding agent. Use tools when useful.'
 
     def with_model(
@@ -59,6 +83,8 @@ def load_settings(path: Path | None = None) -> Settings:
     model_raw = raw.get('model', {})
     approval_raw = raw.get('approval', {})
     mcp_raw = raw.get('mcp', {})
+    session_raw = raw.get('session', {})
+    context_raw = raw.get('context', {})
     provider = (
         os.getenv('AGENT_MODEL_PROVIDER')
         or os.getenv('MODEL_PROVIDER')
@@ -95,6 +121,32 @@ def load_settings(path: Path | None = None) -> Settings:
         mcp=MCPSettings(
             enabled_servers=tuple(mcp_raw.get('enabled_servers', ())),
             servers=tuple(mcp_raw.get('servers', ())),
+        ),
+        session=SessionSettings(
+            enabled=_environment_bool(
+                'AGENT_SESSION_ENABLED',
+                bool(session_raw.get('enabled', True)),
+            ),
+            store_path=Path(
+                os.getenv(
+                    'AGENT_SESSION_STORE',
+                    session_raw.get('store_path', '.runtime/sessions.db'),
+                )
+            ),
+            lease_seconds=int(
+                os.getenv(
+                    'AGENT_SESSION_LEASE_SECONDS',
+                    session_raw.get('lease_seconds', 30),
+                )
+            ),
+        ),
+        context=ContextSettings(
+            recent_message_limit=int(
+                os.getenv(
+                    'AGENT_CONTEXT_RECENT_MESSAGE_LIMIT',
+                    context_raw.get('recent_message_limit', 20),
+                )
+            ),
         ),
         system_prompt=str(
             raw.get(

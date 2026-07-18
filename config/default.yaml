@@ -9,8 +9,12 @@ openai:
   api_key_env: OPENAI_API_KEY
 storage:
   root: .
+session:
+  enabled: true
+  store_path: .runtime/sessions.db
+  lease_seconds: 30
 context:
-  limit: 50000
+  recent_message_limit: 20
 security:
   require_permission_for_destructive_commands: true
 approval:
@@ -22,14 +26,14 @@ approval:
   display_fields:
     - operateType
     - skuCode
-mcp:
-  enabled_servers:
-    - PlantMartBusiness
-  servers:
-    - name: PlantMartBusiness
-      type: streamable-http
-      url: http://10.20.1.72:8085/mcp?serverCode=SI-00006
-      headers:
-        Authorization: ${PLANTMART_MCP_AUTHORIZATION}
-      timeout: 50
-      sse_read_timeout: 50
+# mcp:
+#   enabled_servers:
+#     - PlantMartBusiness
+#   servers:
+    # - name: PlantMartBusiness
+    #   type: streamable-http
+    #   url: http://10.20.1.72:8085/mcp?serverCode=SI-00006
+    #   headers:
+    #     Authorization: ${PLANTMART_MCP_AUTHORIZATION}
+    #   timeout: 50
+    #   sse_read_timeout: 50

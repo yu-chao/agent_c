@@ -33,8 +33,7 @@ class ApprovalCoordinator:
             continuation=continuation,
             timeout_seconds=self.timeout_seconds,
         )
-        self.repository.create(request)
-        return request
+        return self.repository.create(request)
 
     def load_for_resume(self, approval_id: str) -> ApprovalRequest | None:
         self.repository.expire_pending()

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import uuid
 from pathlib import Path
 
+from agent_runtime.approval import RuntimeIdentity
 from agent_runtime.bootstrap import build_runtime
 from agent_runtime.settings import load_settings
 
@@ -13,6 +15,10 @@ def main(argv=None):
     parser.add_argument('--model')
     parser.add_argument('--config', type=Path)
     parser.add_argument('--workdir', type=Path, default=Path.cwd())
+    parser.add_argument(
+        '--session', default='default',
+        help='持久化 CLI 会话名称（默认：default）',
+    )
     args = parser.parse_args(argv)
 
     settings = load_settings(args.config)
@@ -28,4 +34,13 @@ def main(argv=None):
             break
         if not query.strip():
             break
-        print(runtime.run_turn(query))
+        print(runtime.run_turn(query, create_cli_identity(args.session)))
+
+
+def create_cli_identity(session: str) -> RuntimeIdentity:
+    return RuntimeIdentity(
+        platform='cli',
+        conversation_id=session,
+        sender_id='local-user',
+        message_id=f'cli_{uuid.uuid4().hex}',
+    )
