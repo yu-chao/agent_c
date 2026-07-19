@@ -32,6 +32,7 @@ class CheckpointCodec:
         summary_version: int | None = None,
         model_provider: str | None = None,
         model_name: str | None = None,
+        skill_snapshots: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         state: dict[str, Any] = {
             "schema_version": self.version,
@@ -53,6 +54,8 @@ class CheckpointCodec:
             state["model_provider"] = model_provider
         if model_name is not None:
             state["model_name"] = model_name
+        if skill_snapshots:
+            state["skill_snapshots"] = skill_snapshots
         return state
 
     def decode(self, state: dict[str, Any]) -> dict[str, Any]:

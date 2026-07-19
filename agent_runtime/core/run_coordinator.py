@@ -25,13 +25,17 @@ class RunCoordinator:
         self.codec = codec or CheckpointCodec()
         self.context_manager = context_manager
 
-    def start(self, *, identity: Any, user_content: str) -> tuple[Any, dict[str, Any]]:
+    def start(
+        self, *, identity: Any, user_content: str,
+        skill_snapshots: list[dict[str, str]] | None = None,
+    ) -> tuple[Any, dict[str, Any]]:
         initial = self.codec.encode(
             action="model",
             messages=[{"role": "user", "content": user_content}],
             previous_response_id=None,
             next_turn=0,
             identity=self.encode_identity(identity),
+            skill_snapshots=skill_snapshots,
         )
         started = self.repository.start_inbound(
             platform=identity.platform,
@@ -57,6 +61,7 @@ class RunCoordinator:
                 previous_response_id=None, next_turn=0,
                 identity=self.encode_identity(identity),
                 summary_version=built.summary_version,
+                skill_snapshots=skill_snapshots,
             )
             self.repository.save_checkpoint(
                 started.run.id, 'context_built', encoded,
@@ -80,6 +85,7 @@ class RunCoordinator:
         summary_version: int | None = None,
         model_provider: str | None = None,
         model_name: str | None = None,
+        skill_snapshots: list[dict[str, str]] | None = None,
     ) -> None:
         state = self.codec.encode(
             action=action,
@@ -93,6 +99,7 @@ class RunCoordinator:
             summary_version=summary_version,
             model_provider=model_provider,
             model_name=model_name,
+            skill_snapshots=skill_snapshots,
         )
         self.repository.save_checkpoint(
             run.id, phase, state, execution_token=run.execution_token

@@ -54,6 +54,9 @@ class RunRepository(Protocol):
         metadata: dict[str, Any] | None = None,
     ) -> InboundStart: ...
     def get_run(self, run_id: str) -> RunRecord | None: ...
+    def get_inbound(
+        self, platform: str, message_id: str
+    ) -> InboundStart | None: ...
     def transition_run(
         self,
         run_id: str,

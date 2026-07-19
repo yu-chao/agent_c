@@ -223,6 +223,22 @@ class SQLiteSessionStore:
             row = db.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         return _run(row) if row else None
 
+    def get_inbound(
+        self, platform: str, message_id: str
+    ) -> InboundStart | None:
+        with self._connect() as db:
+            existing = db.execute(
+                "SELECT run_id,response FROM inbound_messages "
+                "WHERE platform=? AND message_id=?",
+                (platform, message_id),
+            ).fetchone()
+            if existing is None:
+                return None
+            row = db.execute(
+                "SELECT * FROM runs WHERE id=?", (existing["run_id"],)
+            ).fetchone()
+        return InboundStart(False, _run(row), existing["response"])
+
     def append_message(
         self, session_id: str, run_id: str, role: str, content: str
     ) -> StoredMessage:
