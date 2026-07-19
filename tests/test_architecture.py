@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.bootstrap import build_runtime, build_tool_registry
+from agent_runtime.bootstrap import (
+    build_model_provider,
+    build_runtime,
+    build_tool_registry,
+)
 from agent_runtime.gateway import WeComGateway
 from agent_runtime.gateway.wecom_gateway import WeComGateway as ConcreteWeComGateway
 from agent_runtime.settings import (
@@ -19,6 +23,7 @@ from agent_runtime.settings import (
     load_settings,
 )
 from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent_runtime.models.resilient import ResilientModelProvider
 
 
 FORBIDDEN_CORE_IMPORTS = (
@@ -273,3 +278,27 @@ def test_bootstrap_enables_persistent_sessions(tmp_path):
 
     assert runtime.session_store.path == tmp_path / 'state/sessions.db'
     assert runtime.recent_message_limit == 7
+
+
+def test_bootstrap_builds_primary_and_fallback_from_reliability_settings():
+    settings = Settings(
+        model=ModelSettings('openai', 'primary-model'),
+        reliability=ReliabilitySettings(
+            request_timeout_seconds=12,
+            max_attempts=2,
+            fallback_provider='anthropic',
+            fallback_model='fallback-model',
+        ),
+    )
+
+    provider = build_model_provider(
+        settings, {'openai': object(), 'anthropic': object()}
+    )
+
+    assert isinstance(provider, ResilientModelProvider)
+    assert provider.primary.provider == 'openai'
+    assert provider.primary.model == 'primary-model'
+    assert provider.fallback.provider == 'anthropic'
+    assert provider.fallback.model == 'fallback-model'
+    assert provider.retry_policy.request_timeout_seconds == 12
+    assert provider.retry_policy.max_attempts == 2

@@ -12,10 +12,13 @@ from agent_runtime.models.base import (
     ToolCall,
     ToolResult,
 )
+from agent_runtime.models.errors import classify_model_error
 
 
 class AnthropicProvider:
     """Anthropic Messages API adapter."""
+
+    provider = 'anthropic'
 
     def __init__(self, client: Any | None = None, model: str = "claude-sonnet-4-20250514"):
         self.model = model
@@ -36,13 +39,16 @@ class AnthropicProvider:
         ]
 
     def generate(self, request: ModelRequest) -> ModelResponse:
-        response = self.client.messages.create(
-            model=self.model,
-            system=request.system,
-            messages=self._convert_messages(request.messages),
-            tools=self.convert_tools(request.tools),
-            max_tokens=request.max_tokens,
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                system=request.system,
+                messages=self._convert_messages(request.messages),
+                tools=self.convert_tools(request.tools),
+                max_tokens=request.max_tokens,
+            )
+        except Exception as error:
+            raise classify_model_error(error) from error
         return ModelResponse(blocks=self._parse_content(response.content))
 
     def _convert_messages(self, messages: list[MessageBlock | dict[str, Any]]) -> list[dict[str, Any]]:

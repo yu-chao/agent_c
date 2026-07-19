@@ -9,6 +9,7 @@ from agent_runtime.context import ContextManager, ContextWindow
 from agent_runtime.hooks import HookManager
 from agent_runtime.mcp import MCPHub
 from agent_runtime.models import create_model_provider
+from agent_runtime.models.resilient import RetryPolicy
 from agent_runtime.security import PermissionPolicy
 from agent_runtime.sessions import SQLiteSessionStore
 from agent_runtime.settings import Settings, load_settings
@@ -75,11 +76,19 @@ def build_model_provider(
     settings: Settings,
     clients: dict[str, Any] | None = None,
 ):
-    """仅根据已解析的强类型配置装配主模型。"""
+    """仅根据已解析的强类型配置装配可靠模型。"""
     return create_model_provider(
         clients,
         provider=settings.model.provider,
         model=settings.model.name,
+        fallback_provider=settings.reliability.fallback_provider,
+        fallback_model=settings.reliability.fallback_model,
+        retry_policy=RetryPolicy(
+            request_timeout_seconds=(
+                settings.reliability.request_timeout_seconds
+            ),
+            max_attempts=settings.reliability.max_attempts,
+        ),
     )
 
 

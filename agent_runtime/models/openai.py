@@ -13,10 +13,13 @@ from agent_runtime.models.base import (
     ToolCall,
     ToolResult,
 )
+from agent_runtime.models.errors import classify_model_error
 
 
 class OpenAIProvider:
     """OpenAI Responses API adapter."""
+
+    provider = 'openai'
 
     def __init__(self, client: Any | None = None, model: str = "gpt-5"):
         self.model = model
@@ -51,7 +54,10 @@ class OpenAIProvider:
         if request.previous_response_id:
             kwargs["previous_response_id"] = request.previous_response_id
 
-        response = self.client.responses.create(**kwargs)
+        try:
+            response = self.client.responses.create(**kwargs)
+        except Exception as error:
+            raise classify_model_error(error) from error
         return ModelResponse(
             blocks=self._parse_output(getattr(response, "output", [])),
             response_id=getattr(response, "id", None),

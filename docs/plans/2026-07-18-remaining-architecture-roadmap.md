@@ -133,6 +133,8 @@ class ContextManager(Protocol):
 
 ## 4. P0：模型可靠性、重试与 fallback
 
+> 实现状态（2026-07-19）：已完成统一错误分类、请求超时、指数退避与 jitter、`Retry-After` 限流等待、熔断、fallback 装配、跨 provider 请求重建，以及实际 provider/model checkpoint 记录。
+
 ### 现状缺口
 
 模型调用没有统一超时、错误分类、退避重试、限流处理、熔断和 fallback；YAML 中 fallback 配置未生效。

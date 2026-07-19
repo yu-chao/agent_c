@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 @dataclass(frozen=True)
@@ -38,12 +38,17 @@ class ModelRequest:
     tools: list[Any] = field(default_factory=list)
     max_tokens: int = 8000
     previous_response_id: str | None = None
+    on_fallback: Callable[[str, str], None] | None = None
 
 
 @dataclass
 class ModelResponse:
     blocks: list[TextBlock | ThinkingBlock | ToolCall]
     response_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    attempts: int = 1
+    used_fallback: bool = False
 
     @property
     def text(self) -> str:
@@ -63,6 +68,7 @@ class ModelResponse:
 
 
 class ModelProvider(Protocol):
+    provider: str
     model: str
 
     def generate(self, request: ModelRequest) -> ModelResponse: ...

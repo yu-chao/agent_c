@@ -4,6 +4,7 @@ from typing import Any
 
 from agent_runtime.models.anthropic import AnthropicProvider
 from agent_runtime.models.openai import OpenAIProvider
+from agent_runtime.models.resilient import ResilientModelProvider, RetryPolicy
 
 
 def create_model_provider(
@@ -11,17 +12,33 @@ def create_model_provider(
     *,
     provider: str | None = None,
     model: str | None = None,
+    fallback_provider: str | None = None,
+    fallback_model: str | None = None,
+    retry_policy: RetryPolicy | None = None,
 ):
     clients = clients or {}
     provider = provider or 'openai'
     if provider == 'openai':
-        return OpenAIProvider(
+        primary = OpenAIProvider(
             client=clients.get('openai'),
             model=model or 'gpt-5',
         )
-    if provider == 'anthropic':
-        return AnthropicProvider(
+    elif provider == 'anthropic':
+        primary = AnthropicProvider(
             client=clients.get('anthropic'),
             model=model or 'claude-sonnet-4-20250514',
         )
-    raise ValueError(f'Unknown model provider: {provider}')
+    else:
+        raise ValueError(f'Unknown model provider: {provider}')
+    if retry_policy is None and fallback_provider is None:
+        return primary
+    fallback = None
+    if fallback_provider is not None:
+        fallback = create_model_provider(
+            clients,
+            provider=fallback_provider,
+            model=fallback_model,
+        )
+    return ResilientModelProvider(
+        primary, fallback=fallback, retry_policy=retry_policy
+    )
