@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 _PROVIDERS = frozenset({'openai', 'anthropic'})
 _TOP_LEVEL_FIELDS = frozenset(
-    {'model', 'reliability', 'approval', 'mcp', 'session', 'context',
+    {'model', 'reliability', 'approval', 'mcp', 'session', 'context', 'skills',
      'system_prompt'}
 )
 _SECTION_FIELDS = {
@@ -26,6 +26,9 @@ _SECTION_FIELDS = {
     'context': frozenset(
         {'recent_message_limit', 'max_input_tokens',
          'summary_trigger_tokens', 'tool_result_max_tokens'}
+    ),
+    'skills': frozenset(
+        {'enabled', 'paths', 'max_active', 'allowed_filesystem'}
     ),
 }
 _MCP_SERVER_FIELDS = frozenset(
@@ -142,6 +145,22 @@ class ContextSettings:
 
 
 @dataclass(frozen=True)
+class SkillsSettings:
+    enabled: bool = False
+    paths: tuple[Path, ...] = (Path('skills'),)
+    max_active: int = 3
+    allowed_filesystem: str = 'read'
+
+    def __post_init__(self) -> None:
+        if self.max_active < 0:
+            raise ValueError('skills.max_active must not be negative')
+        if self.allowed_filesystem not in {'none', 'read', 'write'}:
+            raise ValueError(
+                'skills.allowed_filesystem must be one of: none, read, write'
+            )
+
+
+@dataclass(frozen=True)
 class Settings:
     model: ModelSettings = field(default_factory=ModelSettings)
     reliability: ReliabilitySettings = field(
@@ -151,6 +170,7 @@ class Settings:
     mcp: MCPSettings = field(default_factory=MCPSettings)
     session: SessionSettings = field(default_factory=SessionSettings)
     context: ContextSettings = field(default_factory=ContextSettings)
+    skills: SkillsSettings = field(default_factory=SkillsSettings)
     system_prompt: str = 'You are a coding agent. Use tools when useful.'
 
     def with_model(
@@ -183,6 +203,7 @@ def load_settings(path: Path | None = None) -> Settings:
     mcp_raw = _section(raw, 'mcp')
     session_raw = _section(raw, 'session')
     context_raw = _section(raw, 'context')
+    skills_raw = _section(raw, 'skills')
 
     provider = _environment_text(
         'AGENT_MODEL_PROVIDER', model_raw.get('provider', 'openai')
@@ -294,6 +315,28 @@ def load_settings(path: Path | None = None) -> Settings:
                 os.getenv(
                     'AGENT_CONTEXT_TOOL_RESULT_MAX_TOKENS',
                     context_raw.get('tool_result_max_tokens', 4000),
+                )
+            ),
+        ),
+        skills=SkillsSettings(
+            enabled=_environment_bool(
+                'AGENT_SKILLS_ENABLED',
+                _config_bool(skills_raw.get('enabled', False), 'skills.enabled'),
+            ),
+            paths=tuple(
+                Path(value) for value in _string_list(
+                    skills_raw.get('paths', ('skills',)), 'skills.paths'
+                )
+            ),
+            max_active=int(
+                os.getenv(
+                    'AGENT_SKILLS_MAX_ACTIVE', skills_raw.get('max_active', 3)
+                )
+            ),
+            allowed_filesystem=str(
+                os.getenv(
+                    'AGENT_SKILLS_ALLOWED_FILESYSTEM',
+                    skills_raw.get('allowed_filesystem', 'read'),
                 )
             ),
         ),

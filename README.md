@@ -144,6 +144,27 @@ context:
 之后生成的新摘要。当前默认使用可替换的确定性提取式摘要器，provider 精确 token
 计数和模型摘要器可通过相同接口后续接入。
 
+## Skill 加载与版本快照
+
+Skill 默认关闭。启用后，运行时从配置目录的直接子目录发现 `skill.yaml`，校验
+SemVer 版本、入口文件边界、所需工具和文件系统权限，并按 activation keywords
+与描述选择最多 `max_active` 个 Skill。只有选中的 `SKILL.md` 内容会进入模型上下文。
+
+```yaml
+skills:
+  enabled: true
+  paths:
+    - skills
+  max_active: 3
+  allowed_filesystem: read
+```
+
+每个 checkpoint 都保存选中 Skill 的名称、版本和内容摘要。恢复 Run 时会重新发现
+Skill 并严格比对快照；Skill 被删除、升级或同版本内容发生变化时恢复会明确失败，
+不会静默切换。Skill 只能声明现有工具，实际工具调用仍统一经过 `ToolExecutor` 和
+`PermissionPolicy`。可用环境变量为 `AGENT_SKILLS_ENABLED`、
+`AGENT_SKILLS_MAX_ACTIVE` 和 `AGENT_SKILLS_ALLOWED_FILESYSTEM`。
+
 ## 扩展一个工具
 
 ```python

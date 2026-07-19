@@ -200,6 +200,10 @@ class ResilientModelProvider:
 
 ## 6. P1：Skill 加载、选择与版本快照
 
+> 实现状态（2026-07-19）：已完成目录发现、严格 Manifest 校验、关键词/描述选择、
+> 激活数量限制、权限上限校验、system prompt 按需注入、checkpoint/审批 continuation
+> 版本快照，以及恢复前的名称、版本和内容摘要兼容性校验。
+
 ### 现状缺口
 
 当前只有静态 ToolRegistry 和 MCP 工具，没有 Skill 发现、Manifest 校验、按需激活、权限声明、版本快照或热重载。

@@ -12,6 +12,7 @@ from agent_runtime.models import create_model_provider
 from agent_runtime.models.resilient import RetryPolicy
 from agent_runtime.security import PermissionPolicy
 from agent_runtime.sessions import SQLiteSessionStore
+from agent_runtime.skills import SkillLoader, SkillSelector
 from agent_runtime.settings import Settings, load_settings
 from agent_runtime.tools import ToolRegistry
 
@@ -25,6 +26,24 @@ def build_runtime(
     settings = settings or load_settings()
     workdir = (workdir or Path.cwd()).resolve()
     registry = build_tool_registry(settings)
+    skill_loader = None
+    skill_selector = None
+    if settings.skills.enabled:
+        skill_paths = tuple(
+            path if path.is_absolute() else workdir / path
+            for path in settings.skills.paths
+        )
+        tool_specs, _ = registry.assemble()
+        skill_loader = SkillLoader(
+            skill_paths,
+            available_tools={spec.name for spec in tool_specs},
+            allowed_permissions={
+                'filesystem': settings.skills.allowed_filesystem
+            },
+        )
+        # Fail at startup when an installed manifest is invalid.
+        skill_loader.load()
+        skill_selector = SkillSelector(settings.skills.max_active)
     approval_store = None
     if settings.approval.enabled:
         store_path = settings.approval.store_path
@@ -69,6 +88,8 @@ def build_runtime(
         session_store=session_store,
         recent_message_limit=settings.context.recent_message_limit,
         context_manager=context_manager,
+        skill_loader=skill_loader,
+        skill_selector=skill_selector,
     )
 
 

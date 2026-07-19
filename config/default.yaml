@@ -15,6 +15,12 @@ context:
   max_input_tokens: 32000
   summary_trigger_tokens: 24000
   tool_result_max_tokens: 4000
+skills:
+  enabled: false
+  paths:
+    - skills
+  max_active: 3
+  allowed_filesystem: read
 approval:
   enabled: true
   timeout_seconds: 600
