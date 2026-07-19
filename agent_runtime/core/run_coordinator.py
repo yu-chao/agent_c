@@ -78,6 +78,8 @@ class RunCoordinator:
         response: str | None = None,
         approval_id: str | None = None,
         summary_version: int | None = None,
+        model_provider: str | None = None,
+        model_name: str | None = None,
     ) -> None:
         state = self.codec.encode(
             action=action,
@@ -89,6 +91,8 @@ class RunCoordinator:
             response=response,
             approval_id=approval_id,
             summary_version=summary_version,
+            model_provider=model_provider,
+            model_name=model_name,
         )
         self.repository.save_checkpoint(
             run.id, phase, state, execution_token=run.execution_token

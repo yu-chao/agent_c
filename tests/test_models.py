@@ -1,3 +1,5 @@
+import pytest
+
 from agent_runtime.models import (
     ModelRequest,
     TextBlock,
@@ -7,6 +9,7 @@ from agent_runtime.models import (
 )
 from agent_runtime.models.openai import OpenAIProvider
 from agent_runtime.models.anthropic import AnthropicProvider
+from agent_runtime.models.errors import PermanentModelError, RetryableModelError
 from agent_runtime.tools.registry import ToolSpec
 
 
@@ -112,6 +115,26 @@ def test_factory_creates_openai_provider_from_config(monkeypatch):
     assert provider.model == "gpt-5"
 
 
+@pytest.mark.parametrize('status_code', [408, 409, 429, 500, 503])
+def test_openai_provider_classifies_retryable_http_failures(status_code):
+    provider = OpenAIProvider(
+        client=FailingOpenAIClient(HttpError(status_code)), model='gpt-5'
+    )
+
+    with pytest.raises(RetryableModelError):
+        provider.generate(ModelRequest(messages=[], system='sys'))
+
+
+@pytest.mark.parametrize('status_code', [400, 401, 403, 404, 422])
+def test_anthropic_provider_classifies_permanent_http_failures(status_code):
+    provider = AnthropicProvider(
+        client=FailingAnthropicClient(HttpError(status_code)), model='claude'
+    )
+
+    with pytest.raises(PermanentModelError):
+        provider.generate(ModelRequest(messages=[], system='sys'))
+
+
 class FakeOpenAIClient:
     def __init__(self, response):
         self.responses = self
@@ -121,6 +144,30 @@ class FakeOpenAIClient:
     def create(self, **kwargs):
         self.last_kwargs = kwargs
         return self.response
+
+
+class FailingOpenAIClient:
+    def __init__(self, error):
+        self.responses = self
+        self.error = error
+
+    def create(self, **kwargs):
+        raise self.error
+
+
+class FailingAnthropicClient:
+    def __init__(self, error):
+        self.messages = self
+        self.error = error
+
+    def create(self, **kwargs):
+        raise self.error
+
+
+class HttpError(Exception):
+    def __init__(self, status_code):
+        super().__init__(f'HTTP {status_code}')
+        self.status_code = status_code
 
 
 class FakeOpenAIResponse:

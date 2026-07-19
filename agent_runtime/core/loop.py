@@ -145,9 +145,27 @@ class AgentRuntime:
                         system=self.system_prompt,
                         tools=tool_specs,
                         previous_response_id=previous_response_id,
+                        on_fallback=lambda provider, model: (
+                            self._save_checkpoint(
+                                run,
+                                "before_model_fallback",
+                                messages,
+                                None,
+                                turn,
+                                identity,
+                                action="model",
+                                model_provider=provider,
+                                model_name=model,
+                            )
+                        ),
                     )
                 )
-            previous_response_id = response.response_id or previous_response_id
+            if response.used_fallback:
+                previous_response_id = response.response_id
+            else:
+                previous_response_id = (
+                    response.response_id or previous_response_id
+                )
             if not response.tool_calls:
                 self._save_checkpoint(
                     run,
@@ -158,6 +176,8 @@ class AgentRuntime:
                     identity,
                     action="finalize",
                     response=response.text,
+                    model_provider=response.provider,
+                    model_name=response.model,
                 )
                 self.hooks.trigger("Stop", messages)
                 return self._complete(run, response.text)
@@ -171,6 +191,8 @@ class AgentRuntime:
                 identity,
                 action="tools",
                 remaining_calls=response.tool_calls,
+                model_provider=response.provider,
+                model_name=response.model,
             )
             pending = self._process_calls(
                 response.tool_calls,
@@ -397,7 +419,7 @@ class AgentRuntime:
     def _save_checkpoint(
         self, run, phase, messages, previous_response_id, next_turn,
         identity, *, action, remaining_calls=None, response=None,
-        approval_id=None,
+        approval_id=None, model_provider=None, model_name=None,
     ):
         if self.run_coordinator is None or run is None:
             return
@@ -413,6 +435,8 @@ class AgentRuntime:
             response=response,
             approval_id=approval_id,
             summary_version=self._summary_version(messages),
+            model_provider=model_provider,
+            model_name=model_name,
         )
 
     def _complete(self, run, response):

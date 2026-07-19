@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 
 class ModelPort(Protocol):
+    provider: str
+    model: str
+
     def generate(self, request: ModelRequest) -> ModelResponse: ...
 
 
