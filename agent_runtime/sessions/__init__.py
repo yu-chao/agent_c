@@ -4,6 +4,7 @@ from .models import (
     RunRecord,
     RunStatus,
     StoredMessage,
+    SessionSummary,
     ToolClaim,
 )
 from .store import SQLiteSessionStore
@@ -15,5 +16,6 @@ __all__ = [
     "RunStatus",
     "SQLiteSessionStore",
     "StoredMessage",
+    "SessionSummary",
     "ToolClaim",
 ]

@@ -52,6 +52,9 @@ uv run --extra test python -m pytest -q
 
 ## 2. P0：配置契约治理
 
+> 实现状态（2026-07-18）：已完成配置解析、环境变量覆盖、递归未知字段校验、
+> 数值范围校验和强类型装配。fallback 的执行语义归入第 4 节，仍待实现。
+
 ### 现状缺口
 
 `config/default.yaml` 中的 `fallback_provider`、`fallback_model` 尚未进入 `Settings` 和运行时。配置缺少统一校验，非法值通常要到运行阶段才暴露。
@@ -88,6 +91,9 @@ class ReliabilitySettings:
 ---
 
 ## 3. P0：Token 预算与会话摘要
+
+> 实现状态（2026-07-19）：已完成近似 token 计数、请求预算裁剪、工具结果压缩、
+> 版本化会话摘要及 checkpoint 摘要版本快照。provider 精确计数保留为适配器扩展。
 
 ### 现状缺口
 
@@ -449,4 +455,3 @@ class ToolPolicy:
 - 与 Run 状态无关的独立任务队列。
 
 这些功能会放大现有可靠性和安全边界，提前实现会增加返工成本。
-

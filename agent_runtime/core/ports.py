@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
 
 from agent_runtime.contracts import ModelRequest, ModelResponse, ToolCall
 from agent_runtime.core.run_state import (
@@ -11,6 +11,9 @@ from agent_runtime.core.run_state import (
     StoredMessage,
     ToolClaim,
 )
+
+if TYPE_CHECKING:
+    from agent_runtime.context.models import SessionSummary
 
 
 class ModelPort(Protocol):
@@ -73,6 +76,13 @@ class MessageRepository(Protocol):
         self, session_id: str, run_id: str, role: str, content: str
     ) -> StoredMessage: ...
     def recent_messages(self, session_id: str, limit: int) -> list[StoredMessage]: ...
+    def messages_after(
+        self, session_id: str, through_message_id: int = 0
+    ) -> list[StoredMessage]: ...
+    def latest_summary(self, session_id: str) -> SessionSummary | None: ...
+    def save_summary(
+        self, session_id: str, content: str, through_message_id: int
+    ) -> SessionSummary: ...
 
 
 class CheckpointRepository(Protocol):

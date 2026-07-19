@@ -1,31 +1,26 @@
 model:
   provider: anthropic
   name: null
+reliability:
+  request_timeout_seconds: 60
+  max_attempts: 3
   fallback_provider: openai
   fallback_model: gpt-5
-anthropic:
-  api_key_env: ANTHROPIC_API_KEY
-openai:
-  api_key_env: OPENAI_API_KEY
-storage:
-  root: .
 session:
   enabled: true
   store_path: .runtime/sessions.db
   lease_seconds: 30
 context:
   recent_message_limit: 20
-security:
-  require_permission_for_destructive_commands: true
+  max_input_tokens: 32000
+  summary_trigger_tokens: 24000
+  tool_result_max_tokens: 4000
 approval:
   enabled: true
   timeout_seconds: 600
   store_path: .runtime/approvals.db
   tools:
     - mcp__PlantMartBusiness__queryProductInfoUsingPOST
-  display_fields:
-    - operateType
-    - skuCode
 # mcp:
 #   enabled_servers:
 #     - PlantMartBusiness

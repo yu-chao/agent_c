@@ -29,6 +29,7 @@ class CheckpointCodec:
         remaining_calls: list[Any] | None = None,
         response: str | None = None,
         approval_id: str | None = None,
+        summary_version: int | None = None,
     ) -> dict[str, Any]:
         state: dict[str, Any] = {
             "schema_version": self.version,
@@ -44,6 +45,8 @@ class CheckpointCodec:
             state["response"] = response
         if approval_id is not None:
             state["approval_id"] = approval_id
+        if summary_version is not None:
+            state["summary_version"] = summary_version
         return state
 
     def decode(self, state: dict[str, Any]) -> dict[str, Any]:

@@ -11,6 +11,10 @@ from agent_runtime.approval import (
 )
 from agent_runtime.application import AssistantService
 from agent_runtime.core import AgentRuntime, InProgress
+from agent_runtime.context import (
+    ApproximateTokenCounter,
+    ContextManager,
+)
 from agent_runtime.models import ModelResponse, TextBlock, ToolCall
 from agent_runtime.sessions import RunStatus, SQLiteSessionStore
 from agent_runtime.security import PermissionPolicy
@@ -78,6 +82,94 @@ def test_short_term_memory_survives_runtime_restart(tmp_path):
         {"role": "assistant", "content": "你叫张三"},
         {"role": "user", "content": "我叫什么？"},
     ]
+
+
+def test_runtime_applies_token_budget_and_checkpoints_summary_version(tmp_path):
+    path = tmp_path / 'runtime.db'
+    store = SQLiteSessionStore(path)
+    first_model = FakeModel([ModelResponse([TextBlock('a' * 180)])])
+    runtime(first_model, store).run_turn('old-' + 'x' * 180,
+                                         identity('message-context-1'))
+    second_model = FakeModel([ModelResponse([TextBlock('done')])])
+    manager = ContextManager(
+        store,
+        max_input_tokens=80,
+        summary_trigger_tokens=1,
+        tool_result_max_tokens=10,
+        recent_message_limit=1,
+    )
+    agent = AgentRuntime(
+        second_model,
+        ToolRegistry(),
+        session_store=store,
+        recent_message_limit=10,
+        context_manager=manager,
+    )
+
+    answer = agent.run_turn('current question', identity('message-context-2'))
+
+    request = second_model.requests[0]
+    counter = ApproximateTokenCounter()
+    assert answer == 'done'
+    assert counter.count_request(
+        request.system, request.tools, request.messages
+    ) <= 80
+    assert request.messages[-1] == {
+        'role': 'user', 'content': 'current question'
+    }
+    run_id = store.begin_inbound(
+        platform='wecom', conversation_id='chat-1', sender_id='user-1',
+        message_id='message-context-2',
+    ).run.id
+    checkpoint = store.latest_checkpoint(run_id)
+    assert checkpoint.state['summary_version'] == 1
+
+
+def test_resume_uses_checkpoint_summary_instead_of_newer_session_summary(
+    tmp_path,
+):
+    path = tmp_path / 'runtime.db'
+    store = SQLiteSessionStore(path)
+    runtime(
+        FakeModel([ModelResponse([TextBlock('old answer')])]), store
+    ).run_turn('old fact', identity('message-summary-1'))
+    manager = ContextManager(
+        store,
+        max_input_tokens=200,
+        summary_trigger_tokens=1,
+        recent_message_limit=1,
+    )
+    failing = AgentRuntime(
+        FakeModel([RuntimeError('temporary failure')]),
+        ToolRegistry(),
+        session_store=store,
+        context_manager=manager,
+    )
+    with pytest.raises(RuntimeError, match='temporary failure'):
+        failing.run_turn('resume me', identity('message-summary-2'))
+    run = store.list_recoverable_runs()[0]
+    version_one = store.latest_summary(run.session_id)
+    checkpoint = store.latest_checkpoint(run.id)
+    assert checkpoint.state['summary_version'] == version_one.version == 1
+
+    store.append_message(
+        run.session_id, run.id, 'assistant', 'newer summary material'
+    )
+    ContextManager(store, recent_message_limit=0).compact(run.session_id)
+    assert store.latest_summary(run.session_id).version == 2
+    recovered_model = FakeModel([ModelResponse([TextBlock('recovered')])])
+
+    result = AgentRuntime(
+        recovered_model,
+        ToolRegistry(),
+        session_store=store,
+        context_manager=manager,
+    ).resume_run(run.id)
+
+    assert result == 'recovered'
+    summary_message = recovered_model.requests[0].messages[0]
+    assert 'old fact' in summary_message['content']
+    assert 'newer summary material' not in summary_message['content']
 
 
 def test_duplicate_message_returns_cached_response_without_calling_model(tmp_path):

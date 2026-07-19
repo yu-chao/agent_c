@@ -44,6 +44,7 @@ class AgentRuntime:
         approval_timeout_seconds: int = 600,
         session_store: SessionRepository | None = None,
         recent_message_limit: int = 20,
+        context_manager=None,
     ):
         self.model = model
         self.tools = tools
@@ -59,9 +60,12 @@ class AgentRuntime:
         self.approval_timeout_seconds = approval_timeout_seconds
         self.session_store = session_store
         self.recent_message_limit = recent_message_limit
+        self.context_manager = context_manager
         self.run_coordinator = (
             RunCoordinator(
-                session_store, recent_message_limit=recent_message_limit
+                session_store,
+                recent_message_limit=recent_message_limit,
+                context_manager=context_manager,
             )
             if session_store is not None else None
         )
@@ -120,6 +124,11 @@ class AgentRuntime:
         run: RunRecord | None = None,
     ):
         for turn in range(start_turn, self.max_turns):
+            tool_specs, handlers = self.tools.assemble()
+            if self.context_manager is not None:
+                messages = self.context_manager.prepare(
+                    messages, system=self.system_prompt, tools=tool_specs
+                )
             self._save_checkpoint(
                 run,
                 "before_model",
@@ -129,11 +138,10 @@ class AgentRuntime:
                 identity,
                 action="model",
             )
-            tool_specs, handlers = self.tools.assemble()
             with self._heartbeat(run):
                 response = self.model.generate(
                     ModelRequest(
-                        messages=messages,
+                        messages=self._provider_messages(messages),
                         system=self.system_prompt,
                         tools=tool_specs,
                         previous_response_id=previous_response_id,
@@ -404,6 +412,7 @@ class AgentRuntime:
             remaining_calls=remaining_calls,
             response=response,
             approval_id=approval_id,
+            summary_version=self._summary_version(messages),
         )
 
     def _complete(self, run, response):
@@ -420,6 +429,22 @@ class AgentRuntime:
             from contextlib import nullcontext
             return nullcontext()
         return self.run_coordinator.heartbeat(run)
+
+    @staticmethod
+    def _summary_version(messages) -> int | None:
+        for item in messages:
+            if isinstance(item, dict) and item.get('summary_version') is not None:
+                return int(item['summary_version'])
+        return None
+
+    @staticmethod
+    def _provider_messages(messages):
+        return [
+            {key: value for key, value in item.items()
+             if key != 'summary_version'}
+            if isinstance(item, dict) else item
+            for item in messages
+        ]
 
     @staticmethod
     def _decode_identity(value):

@@ -18,10 +18,12 @@ class RunCoordinator:
         *,
         recent_message_limit: int,
         codec: CheckpointCodec | None = None,
+        context_manager: Any | None = None,
     ):
         self.repository = repository
         self.recent_message_limit = recent_message_limit
         self.codec = codec or CheckpointCodec()
+        self.context_manager = context_manager
 
     def start(self, *, identity: Any, user_content: str) -> tuple[Any, dict[str, Any]]:
         initial = self.codec.encode(
@@ -43,6 +45,23 @@ class RunCoordinator:
         )
         checkpoint = self.repository.latest_checkpoint(started.run.id)
         state = self.codec.decode(checkpoint.state) if checkpoint else {}
+        if started.is_new and self.context_manager is not None:
+            built = self.context_manager.build(
+                started.run.session_id, started.run.id
+            )
+            state['messages'] = built.messages
+            if built.summary_version is not None:
+                state['summary_version'] = built.summary_version
+            encoded = self.codec.encode(
+                action='model', messages=built.messages,
+                previous_response_id=None, next_turn=0,
+                identity=self.encode_identity(identity),
+                summary_version=built.summary_version,
+            )
+            self.repository.save_checkpoint(
+                started.run.id, 'context_built', encoded,
+                execution_token=started.run.execution_token,
+            )
         return started, state
 
     def save(
@@ -58,6 +77,7 @@ class RunCoordinator:
         remaining_calls: list[Any] | None = None,
         response: str | None = None,
         approval_id: str | None = None,
+        summary_version: int | None = None,
     ) -> None:
         state = self.codec.encode(
             action=action,
@@ -68,6 +88,7 @@ class RunCoordinator:
             remaining_calls=remaining_calls,
             response=response,
             approval_id=approval_id,
+            summary_version=summary_version,
         )
         self.repository.save_checkpoint(
             run.id, phase, state, execution_token=run.execution_token
@@ -131,4 +152,3 @@ class RunCoordinator:
             "message_id": identity.message_id,
             "metadata": identity.metadata,
         }
-

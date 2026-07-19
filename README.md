@@ -100,6 +100,50 @@ user input
 
 配置示例见 [config/default.yaml](config/default.yaml)。
 
+## 配置契约
+
+运行时按“代码默认值 → YAML → 环境变量”的优先级加载配置。配置文件中的未知
+字段、错误的段类型以及越界数值会在启动时直接报错，避免运行到模型或工具调用
+阶段才暴露问题。模型可靠性配置示例：
+
+```yaml
+model:
+  provider: anthropic
+  name: null
+reliability:
+  request_timeout_seconds: 60
+  max_attempts: 3
+  fallback_provider: openai
+  fallback_model: gpt-5
+```
+
+对应环境变量为 `AGENT_MODEL_PROVIDER`、`AGENT_MODEL_ID`、
+`AGENT_MODEL_REQUEST_TIMEOUT_SECONDS`、`AGENT_MODEL_MAX_ATTEMPTS`、
+`AGENT_MODEL_FALLBACK_PROVIDER` 和 `AGENT_MODEL_FALLBACK_ID`。环境变量只在
+`load_settings()` 中解析，`bootstrap` 和模型工厂仅消费强类型配置。fallback 的
+实际重试和切换行为将在“模型可靠性、重试与 fallback”阶段接入。
+
+## Token 预算与会话摘要
+
+运行时在每次模型调用前计算系统提示、工具 schema 和消息的近似 token 总量，
+并保证内部 `ModelRequest` 不超过 `context.max_input_tokens`。超过预算时优先移除
+最旧消息；当前用户消息和最近一组工具调用/结果会被保留，过大的工具结果会带
+明确标记截断。
+
+```yaml
+context:
+  recent_message_limit: 20
+  max_input_tokens: 32000
+  summary_trigger_tokens: 24000
+  tool_result_max_tokens: 4000
+```
+
+当摘要触发阈值被达到时，运行时把旧消息写入版本化的
+`session_summaries`，并保存摘要覆盖到的 message ID。checkpoint 同时保存
+`summary_version`；恢复 Run 时继续使用 checkpoint 中的消息快照，不会静默混入
+之后生成的新摘要。当前默认使用可替换的确定性提取式摘要器，provider 精确 token
+计数和模型摘要器可通过相同接口后续接入。
+
 ## 扩展一个工具
 
 ```python

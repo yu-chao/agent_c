@@ -10,6 +10,7 @@ from typing import Any
 
 from agent_runtime.core.checkpoints import CheckpointCodec
 from agent_runtime.core.run_state import RunLeaseLost, RunStateMachine
+from agent_runtime.context.models import SessionSummary
 
 from .models import (
     Checkpoint,
@@ -80,6 +81,16 @@ class SQLiteSessionStore:
                   started_at TEXT NOT NULL, finished_at TEXT,
                   PRIMARY KEY(run_id, call_id),
                   FOREIGN KEY(run_id) REFERENCES runs(id));
+                CREATE TABLE IF NOT EXISTS session_summaries (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id TEXT NOT NULL, version INTEGER NOT NULL,
+                  content TEXT NOT NULL, through_message_id INTEGER NOT NULL,
+                  created_at TEXT NOT NULL,
+                  UNIQUE(session_id, version),
+                  FOREIGN KEY(session_id) REFERENCES sessions(id),
+                  FOREIGN KEY(through_message_id) REFERENCES messages(id));
+                CREATE INDEX IF NOT EXISTS session_summaries_session_idx
+                  ON session_summaries(session_id, version);
                 """
             )
             columns = {
@@ -238,6 +249,57 @@ class SQLiteSessionStore:
                 (session_id, limit),
             ).fetchall()
         return [_message(row) for row in rows]
+
+    def messages_after(
+        self, session_id: str, through_message_id: int = 0
+    ) -> list[StoredMessage]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM messages WHERE session_id=? AND id>? ORDER BY id",
+                (session_id, through_message_id),
+            ).fetchall()
+        return [_message(row) for row in rows]
+
+    def latest_summary(self, session_id: str) -> SessionSummary | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM session_summaries WHERE session_id=? "
+                "ORDER BY version DESC LIMIT 1",
+                (session_id,),
+            ).fetchone()
+        return _summary(row) if row else None
+
+    def save_summary(
+        self, session_id: str, content: str, through_message_id: int
+    ) -> SessionSummary:
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            covered = db.execute(
+                "SELECT id FROM messages WHERE id=? AND session_id=?",
+                (through_message_id, session_id),
+            ).fetchone()
+            if covered is None:
+                raise ValueError(
+                    "summary through_message_id does not belong to session"
+                )
+            latest = db.execute(
+                "SELECT version,through_message_id FROM session_summaries "
+                "WHERE session_id=? ORDER BY version DESC LIMIT 1",
+                (session_id,),
+            ).fetchone()
+            if latest and through_message_id <= latest["through_message_id"]:
+                raise ValueError("summary coverage must advance")
+            version = int(latest["version"]) + 1 if latest else 1
+            cursor = db.execute(
+                "INSERT INTO session_summaries(session_id,version,content,"
+                "through_message_id,created_at) VALUES(?,?,?,?,?)",
+                (session_id, version, content, through_message_id, _now()),
+            )
+            row = db.execute(
+                "SELECT * FROM session_summaries WHERE id=?",
+                (cursor.lastrowid,),
+            ).fetchone()
+        return _summary(row)
 
     def save_checkpoint(
         self,
@@ -593,4 +655,12 @@ def _checkpoint(row: sqlite3.Row) -> Checkpoint:
         id=row["id"], run_id=row["run_id"], sequence=row["sequence"],
         phase=row["phase"], state=json.loads(row["state_json"]),
         created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _summary(row: sqlite3.Row) -> SessionSummary:
+    return SessionSummary(
+        id=row['id'], session_id=row['session_id'], version=row['version'],
+        content=row['content'], through_message_id=row['through_message_id'],
+        created_at=datetime.fromisoformat(row['created_at']),
     )

@@ -5,6 +5,7 @@ from typing import Any
 
 from agent_runtime.approval import SQLiteApprovalStore
 from agent_runtime.core import AgentRuntime
+from agent_runtime.context import ContextManager, ContextWindow
 from agent_runtime.hooks import HookManager
 from agent_runtime.mcp import MCPHub
 from agent_runtime.models import create_model_provider
@@ -37,13 +38,24 @@ def build_runtime(
         session_store = SQLiteSessionStore(
             session_path, lease_seconds=settings.session.lease_seconds
         )
+    context_options = {
+        'max_input_tokens': settings.context.max_input_tokens,
+        'tool_result_max_tokens': settings.context.tool_result_max_tokens,
+    }
+    if session_store is not None:
+        context_manager = ContextManager(
+            session_store,
+            summary_trigger_tokens=(
+                settings.context.summary_trigger_tokens
+            ),
+            recent_message_limit=settings.context.recent_message_limit,
+            **context_options,
+        )
+    else:
+        context_manager = ContextWindow(**context_options)
 
     return AgentRuntime(
-        model=create_model_provider(
-            clients,
-            provider=settings.model.provider,
-            model=settings.model.name,
-        ),
+        model=build_model_provider(settings, clients),
         tools=registry,
         hooks=HookManager(),
         permission_policy=PermissionPolicy(
@@ -55,6 +67,19 @@ def build_runtime(
         approval_timeout_seconds=settings.approval.timeout_seconds,
         session_store=session_store,
         recent_message_limit=settings.context.recent_message_limit,
+        context_manager=context_manager,
+    )
+
+
+def build_model_provider(
+    settings: Settings,
+    clients: dict[str, Any] | None = None,
+):
+    """仅根据已解析的强类型配置装配主模型。"""
+    return create_model_provider(
+        clients,
+        provider=settings.model.provider,
+        model=settings.model.name,
     )
 
 

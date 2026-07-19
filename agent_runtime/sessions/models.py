@@ -13,6 +13,7 @@ from agent_runtime.core.run_state import (
     StoredMessage,
     ToolClaim,
 )
+from agent_runtime.context.models import SessionSummary
 
 __all__ = [
     "Checkpoint",
@@ -20,5 +21,6 @@ __all__ = [
     "RunRecord",
     "RunStatus",
     "StoredMessage",
+    "SessionSummary",
     "ToolClaim",
 ]
