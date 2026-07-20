@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 _PROVIDERS = frozenset({'openai', 'anthropic'})
 _TOP_LEVEL_FIELDS = frozenset(
     {'model', 'reliability', 'approval', 'mcp', 'session', 'context', 'skills',
-     'system_prompt'}
+     'storage', 'system_prompt'}
 )
 _SECTION_FIELDS = {
     'model': frozenset({'provider', 'name'}),
@@ -29,6 +29,9 @@ _SECTION_FIELDS = {
     ),
     'skills': frozenset(
         {'enabled', 'paths', 'max_active', 'allowed_filesystem'}
+    ),
+    'storage': frozenset(
+        {'backend', 'postgres_dsn', 'migrate_on_start', 'queue_enabled'}
     ),
 }
 _MCP_SERVER_FIELDS = frozenset(
@@ -119,6 +122,26 @@ class SessionSettings:
 
 
 @dataclass(frozen=True)
+class StorageSettings:
+    backend: str = 'sqlite'
+    postgres_dsn: str | None = None
+    migrate_on_start: bool = True
+    queue_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if self.backend not in {'sqlite', 'postgres'}:
+            raise ValueError('storage.backend must be one of: sqlite, postgres')
+        if self.backend == 'postgres' and not self.postgres_dsn:
+            raise ValueError(
+                'storage.postgres_dsn is required for the postgres backend'
+            )
+        if self.queue_enabled and self.backend != 'postgres':
+            raise ValueError(
+                'storage.queue_enabled requires the postgres backend'
+            )
+
+
+@dataclass(frozen=True)
 class ContextSettings:
     recent_message_limit: int = 20
     max_input_tokens: int = 32000
@@ -169,6 +192,7 @@ class Settings:
     approval: ApprovalSettings = field(default_factory=ApprovalSettings)
     mcp: MCPSettings = field(default_factory=MCPSettings)
     session: SessionSettings = field(default_factory=SessionSettings)
+    storage: StorageSettings = field(default_factory=StorageSettings)
     context: ContextSettings = field(default_factory=ContextSettings)
     skills: SkillsSettings = field(default_factory=SkillsSettings)
     system_prompt: str = 'You are a coding agent. Use tools when useful.'
@@ -202,6 +226,7 @@ def load_settings(path: Path | None = None) -> Settings:
     approval_raw = _section(raw, 'approval')
     mcp_raw = _section(raw, 'mcp')
     session_raw = _section(raw, 'session')
+    storage_raw = _section(raw, 'storage')
     context_raw = _section(raw, 'context')
     skills_raw = _section(raw, 'skills')
 
@@ -290,6 +315,31 @@ def load_settings(path: Path | None = None) -> Settings:
                     'AGENT_SESSION_LEASE_SECONDS',
                     session_raw.get('lease_seconds', 30),
                 )
+            ),
+        ),
+        storage=StorageSettings(
+            backend=str(
+                os.getenv(
+                    'AGENT_STORAGE_BACKEND',
+                    storage_raw.get('backend', 'sqlite'),
+                )
+            ),
+            postgres_dsn=_environment_optional_text(
+                'AGENT_POSTGRES_DSN', storage_raw.get('postgres_dsn')
+            ),
+            migrate_on_start=_environment_bool(
+                'AGENT_STORAGE_MIGRATE_ON_START',
+                _config_bool(
+                    storage_raw.get('migrate_on_start', True),
+                    'storage.migrate_on_start',
+                ),
+            ),
+            queue_enabled=_environment_bool(
+                'AGENT_RUN_QUEUE_ENABLED',
+                _config_bool(
+                    storage_raw.get('queue_enabled', False),
+                    'storage.queue_enabled',
+                ),
             ),
         ),
         context=ContextSettings(

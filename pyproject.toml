@@ -17,6 +17,7 @@ agent-runtime = 'agent_runtime.cli:main'
 agent-runtime-wecom = 'agent_runtime.main:main'
 
 [project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2.0"]
 test = ["pytest>=8.0.0"]
 
 [build-system]

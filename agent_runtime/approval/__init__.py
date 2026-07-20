@@ -18,6 +18,7 @@ __all__ = [
     'ApprovalStatus',
     'RuntimeIdentity',
     'SQLiteApprovalStore',
+    'PostgresApprovalStore',
     'hash_tool_arguments',
 ]
 
@@ -27,4 +28,8 @@ def __getattr__(name: str):
         from .store import SQLiteApprovalStore
 
         return SQLiteApprovalStore
+    if name == 'PostgresApprovalStore':
+        from .postgres_store import PostgresApprovalStore
+
+        return PostgresApprovalStore
     raise AttributeError(name)

@@ -34,6 +34,36 @@ context:
   recent_message_limit: 20
 ```
 
+### PostgreSQL 多实例部署
+
+生产环境可让会话、Run、checkpoint、工具账本和审批共用 PostgreSQL：
+
+```sh
+uv sync --extra postgres
+```
+
+```yaml
+storage:
+  backend: postgres
+  postgres_dsn: postgresql://agent:password@db.example.com/agent_runtime
+  migrate_on_start: true
+  queue_enabled: true
+```
+
+也可通过 `AGENT_STORAGE_BACKEND`、`AGENT_POSTGRES_DSN`、
+`AGENT_STORAGE_MIGRATE_ON_START` 和 `AGENT_RUN_QUEUE_ENABLED` 覆盖。首次连接会按
+`agent_runtime/migrations/postgres/` 中的显式版本迁移建表；生产发布也可以先由部署
+流程调用 `agent_runtime.migrations.apply_postgres_migrations()`，再把
+`migrate_on_start` 设为 `false`。
+
+`PostgresRunQueue` 使用 `FOR UPDATE SKIP LOCKED` 领取任务，并且只传递 `run_id`。
+worker 领取后仍须通过会话存储的 CAS 和租约确认 Run 可执行，不能把队列消息当作
+真实状态。集成测试需设置专用测试库 `AGENT_TEST_POSTGRES_DSN`：
+
+```sh
+uv run --extra test --extra postgres python -m pytest tests/integration -q
+```
+
 这是一个可扩展的多供应商 Agent 运行时。项目采用“入口与装配层 → 应用层 → 核心协议与能力端口 ← 基础设施适配器”的单向依赖结构。
 
 ## 运行

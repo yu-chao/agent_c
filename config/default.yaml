@@ -4,8 +4,15 @@ model:
 reliability:
   request_timeout_seconds: 60
   max_attempts: 3
-  fallback_provider: openai
-  fallback_model: gpt-5
+  fallback_provider: anthropic
+  fallback_model: deepseek-v4-pro
+storage:
+  # 本地默认使用 sqlite；生产多实例部署可切换为 postgres。
+  backend: postgres
+  postgres_dsn: postgresql://postgres:difyai123456@10.10.56.51:5432/agent_runtime
+  migrate_on_start: true
+  # 队列仅投递 Run ID，Run 状态始终以数据库为准。
+  queue_enabled: true
 session:
   enabled: true
   store_path: .runtime/sessions.db
