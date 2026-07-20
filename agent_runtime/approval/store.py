@@ -185,6 +185,20 @@ class SQLiteApprovalStore:
         return self._list("SELECT * FROM approvals WHERE status=?",
                           (ApprovalStatus.EXECUTING,))
 
+    def list_for_admin(self, *, tenant_id=None, status=None, limit=100):
+        values = () if status is None else (status,)
+        query = "SELECT * FROM approvals"
+        if status is not None:
+            query += " WHERE status=?"
+        query += " ORDER BY created_at DESC"
+        if tenant_id is None:
+            return self._list(query + " LIMIT ?", (*values, limit))
+        items = self._list(query, values)
+        return [
+            item for item in items
+            if item.identity.metadata.get("tenant_id", "default") == tenant_id
+        ][:limit]
+
     def _list(self, query, values):
         with self._connect() as db:
             return [_request(row) for row in db.execute(query, values).fetchall()]

@@ -61,9 +61,11 @@ def memory_service(request, tmp_path):
 
 def test_explicit_migrations_are_contiguous_and_include_queue():
     migrations = postgres_migrations()
-    assert [migration.version for migration in migrations] == [1, 2]
+    assert [migration.version for migration in migrations] == [1, 2, 3]
     assert "CREATE TABLE run_queue" in migrations[0].sql
     assert "CREATE TABLE memories" in migrations[1].sql
+    assert "CREATE TABLE admin_operations" in migrations[2].sql
+    assert "CREATE TABLE audit_events" in migrations[2].sql
 
 
 def test_session_storage_contract(session_store):

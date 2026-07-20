@@ -408,6 +408,11 @@ class ToolPolicy:
 
 ## 12. P2：管理面、审计与数据保留
 
+> 实现状态（2026-07-20）：已完成租户化 Session 归属、SQLite/PostgreSQL 管理仓储、
+> scope 鉴权、管理查询、Run 暂停/取消/失败恢复、未知工具结果人工处置、幂等操作与
+> 追加式审计导出，以及按租户/截止时间清理消息、摘要、checkpoint 和附件元数据；
+> 清理使用终态白名单并保护任何仍含非终态 Run 的 Session。
+
 ### 目标能力
 
 - 查询 Session、Run、Checkpoint、ToolExecution 和 Approval。

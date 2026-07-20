@@ -4,6 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from agent_runtime.approval import PostgresApprovalStore, SQLiteApprovalStore
+from agent_runtime.admin import (
+    AdminService,
+    PostgresAdminRepository,
+    SQLiteAdminRepository,
+)
 from agent_runtime.core import AgentRuntime
 from agent_runtime.context import ContextManager, ContextWindow
 from agent_runtime.hooks import HookManager
@@ -15,6 +20,11 @@ from agent_runtime.memory import (
 )
 from agent_runtime.models import create_model_provider
 from agent_runtime.models.resilient import RetryPolicy
+from agent_runtime.retention import (
+    PostgresRetentionRepository,
+    RetentionService,
+    SQLiteRetentionRepository,
+)
 from agent_runtime.security import PermissionPolicy
 from agent_runtime.sessions import PostgresSessionStore, SQLiteSessionStore
 from agent_runtime.skills import SkillLoader, SkillSelector
@@ -159,6 +169,54 @@ def build_run_queue(settings: Settings):
         settings.storage.postgres_dsn or '',
         migrate=settings.storage.migrate_on_start,
     )
+
+
+def build_admin_service(
+    settings: Settings,
+    *,
+    runtime: AgentRuntime | None = None,
+    workdir: Path | None = None,
+) -> AdminService:
+    """装配显式调用的管理服务；认证主体仍由可信入口注入。"""
+    repository = _build_governance_repository(
+        settings, workdir=workdir, retention=False
+    )
+    approval_repository = runtime.approval_store if runtime else None
+    resume_callback = runtime.resume_run if runtime else None
+    return AdminService(
+        repository,
+        approval_repository=approval_repository,
+        resume_callback=resume_callback,
+    )
+
+
+def build_retention_service(
+    settings: Settings, *, workdir: Path | None = None
+) -> RetentionService:
+    """装配手动触发的数据保留服务；不会自动执行清理。"""
+    repository = _build_governance_repository(
+        settings, workdir=workdir, retention=True
+    )
+    return RetentionService(repository)
+
+
+def _build_governance_repository(settings, *, workdir, retention):
+    if not settings.session.enabled:
+        raise ValueError("session storage is required for governance services")
+    if settings.storage.backend == "postgres":
+        cls = (
+            PostgresRetentionRepository if retention
+            else PostgresAdminRepository
+        )
+        return cls(
+            settings.storage.postgres_dsn or "",
+            migrate=settings.storage.migrate_on_start,
+        )
+    path = settings.session.store_path
+    if not path.is_absolute():
+        path = (workdir or Path.cwd()).resolve() / path
+    cls = SQLiteRetentionRepository if retention else SQLiteAdminRepository
+    return cls(path)
 
 
 def build_tool_registry(settings: Settings) -> ToolRegistry:
