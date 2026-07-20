@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agent_runtime.approval import SQLiteApprovalStore
+from agent_runtime.approval import PostgresApprovalStore, SQLiteApprovalStore
 from agent_runtime.core import AgentRuntime
 from agent_runtime.context import ContextManager, ContextWindow
 from agent_runtime.hooks import HookManager
@@ -11,10 +11,11 @@ from agent_runtime.mcp import MCPHub
 from agent_runtime.models import create_model_provider
 from agent_runtime.models.resilient import RetryPolicy
 from agent_runtime.security import PermissionPolicy
-from agent_runtime.sessions import SQLiteSessionStore
+from agent_runtime.sessions import PostgresSessionStore, SQLiteSessionStore
 from agent_runtime.skills import SkillLoader, SkillSelector
 from agent_runtime.settings import Settings, load_settings
 from agent_runtime.tools import ToolRegistry
+from agent_runtime.tasks import PostgresRunQueue
 
 
 def build_runtime(
@@ -46,18 +47,31 @@ def build_runtime(
         skill_selector = SkillSelector(settings.skills.max_active)
     approval_store = None
     if settings.approval.enabled:
-        store_path = settings.approval.store_path
-        if not store_path.is_absolute():
-            store_path = workdir / store_path
-        approval_store = SQLiteApprovalStore(store_path)
+        if settings.storage.backend == 'postgres':
+            approval_store = PostgresApprovalStore(
+                settings.storage.postgres_dsn or '',
+                migrate=settings.storage.migrate_on_start,
+            )
+        else:
+            store_path = settings.approval.store_path
+            if not store_path.is_absolute():
+                store_path = workdir / store_path
+            approval_store = SQLiteApprovalStore(store_path)
     session_store = None
     if settings.session.enabled:
-        session_path = settings.session.store_path
-        if not session_path.is_absolute():
-            session_path = workdir / session_path
-        session_store = SQLiteSessionStore(
-            session_path, lease_seconds=settings.session.lease_seconds
-        )
+        if settings.storage.backend == 'postgres':
+            session_store = PostgresSessionStore(
+                settings.storage.postgres_dsn or '',
+                lease_seconds=settings.session.lease_seconds,
+                migrate=settings.storage.migrate_on_start,
+            )
+        else:
+            session_path = settings.session.store_path
+            if not session_path.is_absolute():
+                session_path = workdir / session_path
+            session_store = SQLiteSessionStore(
+                session_path, lease_seconds=settings.session.lease_seconds
+            )
     context_options = {
         'max_input_tokens': settings.context.max_input_tokens,
         'tool_result_max_tokens': settings.context.tool_result_max_tokens,
@@ -110,6 +124,16 @@ def build_model_provider(
             ),
             max_attempts=settings.reliability.max_attempts,
         ),
+    )
+
+
+def build_run_queue(settings: Settings):
+    """按配置装配可选队列；队列不承载 Run 的真实状态。"""
+    if not settings.storage.queue_enabled:
+        return None
+    return PostgresRunQueue(
+        settings.storage.postgres_dsn or '',
+        migrate=settings.storage.migrate_on_start,
     )
 
 

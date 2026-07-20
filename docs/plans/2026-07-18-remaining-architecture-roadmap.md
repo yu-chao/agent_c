@@ -352,6 +352,10 @@ class ToolPolicy:
 
 ## 10. P2：生产级存储与分布式执行
 
+> 实现状态（2026-07-20）：已完成 PostgreSQL 会话/Run/checkpoint/工具账本与审批
+> 存储、显式版本迁移、基于行锁的多实例领取、只投递 Run ID 的可选 PostgreSQL
+> 队列，以及 SQLite/PostgreSQL 参数化存储契约测试。
+
 ### 目标
 
 将当前 SQLite 实现保留为本地默认，同时提供 PostgreSQL 会话/审批存储和可选任务队列。
