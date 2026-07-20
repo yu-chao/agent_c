@@ -15,6 +15,11 @@ from agent_runtime.approval import (
     SQLiteApprovalStore,
 )
 from agent_runtime.migrations import postgres_migrations
+from agent_runtime.memory import (
+    MemoryService,
+    PostgresMemoryStore,
+    SQLiteMemoryStore,
+)
 from agent_runtime.sessions import (
     PostgresSessionStore,
     RunStatus,
@@ -45,10 +50,20 @@ def approval_store(request, tmp_path):
     return PostgresApprovalStore(_postgres_dsn())
 
 
+@pytest.fixture(params=("sqlite", "postgres"))
+def memory_service(request, tmp_path):
+    if request.param == "sqlite":
+        store = SQLiteMemoryStore(tmp_path / "memory.db")
+    else:
+        store = PostgresMemoryStore(_postgres_dsn())
+    return MemoryService(store)
+
+
 def test_explicit_migrations_are_contiguous_and_include_queue():
     migrations = postgres_migrations()
-    assert [migration.version for migration in migrations] == [1]
+    assert [migration.version for migration in migrations] == [1, 2]
     assert "CREATE TABLE run_queue" in migrations[0].sql
+    assert "CREATE TABLE memories" in migrations[1].sql
 
 
 def test_session_storage_contract(session_store):
@@ -151,3 +166,21 @@ def test_postgres_queue_only_transports_run_ids():
     assert claimed and claimed.run_id == run_id and claimed.attempts == 1
     assert not queue.acknowledge(run_id, "worker-b")
     assert queue.acknowledge(run_id, "worker-a")
+
+
+def test_memory_storage_contract(memory_service):
+    key = uuid.uuid4().hex
+    owner = RuntimeIdentity("contract", "chat", key, f"message-{key}")
+    original = memory_service.remember_user_statement(owner, "pump preference")
+    corrected = memory_service.correct(
+        RuntimeIdentity("contract", "chat", key, f"correction-{key}"),
+        original.id,
+        "meter preference",
+    )
+    assert [
+        item.content for item in memory_service.what_is_remembered(owner)
+    ] == ["meter preference"]
+    assert memory_service.store.get(original.id).superseded_by_id == corrected.id
+    assert memory_service.forget(owner, corrected.id)
+    assert memory_service.store.get(original.id) is None
+    assert memory_service.store.get(corrected.id) is None

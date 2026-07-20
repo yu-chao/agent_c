@@ -57,6 +57,7 @@ class AgentRuntime:
         context_manager=None,
         skill_loader=None,
         skill_selector=None,
+        memory_service=None,
         observability: Observability | None = None,
     ):
         self.model = model
@@ -76,6 +77,7 @@ class AgentRuntime:
         self.context_manager = context_manager
         self.skill_loader = skill_loader
         self.skill_selector = skill_selector
+        self.memory_service = memory_service
         self.observability = observability or Observability()
         self.run_coordinator = (
             RunCoordinator(

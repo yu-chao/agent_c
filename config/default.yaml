@@ -8,11 +8,17 @@ reliability:
   fallback_model: deepseek-v4-pro
 storage:
   # 本地默认使用 sqlite；生产多实例部署可切换为 postgres。
-  backend: postgres
-  postgres_dsn: postgresql://postgres:difyai123456@10.10.56.51:5432/agent_runtime
+  backend: sqlite
+  postgres_dsn: null
   migrate_on_start: true
   # 队列仅投递 Run ID，Run 状态始终以数据库为准。
-  queue_enabled: true
+  queue_enabled: false
+memory:
+  # 长期记忆涉及隐私，默认关闭且只接受显式用户陈述或纠正。
+  enabled: false
+  store_path: .runtime/memory.db
+  default_ttl_days: 365
+  max_results: 5
 session:
   enabled: true
   store_path: .runtime/sessions.db
