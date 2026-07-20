@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import uuid
+from typing import Callable
 
 from agent_runtime.approval import (
     ApprovalRequest,
@@ -106,7 +107,8 @@ class AgentRuntime:
         return self.session_store.renew_run(run_id)
 
     def run_turn(
-        self, user_input: str, identity: RuntimeIdentity | None = None
+        self, user_input: str, identity: RuntimeIdentity | None = None,
+        run_started: Callable[[RunRecord], None] | None = None,
     ) -> Completed | PendingApproval | InProgress:
         session_id = (
             f"{identity.platform}:{identity.conversation_id}"
@@ -123,7 +125,7 @@ class AgentRuntime:
         ):
             with self.observability.span("agent.run") as span:
                 try:
-                    result = self._run_turn(user_input, identity)
+                    result = self._run_turn(user_input, identity, run_started)
                 except Exception:
                     self.observability.increment(
                         "agent_runs_total", status="error"
@@ -149,7 +151,8 @@ class AgentRuntime:
                 return result
 
     def _run_turn(
-        self, user_input: str, identity: RuntimeIdentity | None = None
+        self, user_input: str, identity: RuntimeIdentity | None = None,
+        run_started: Callable[[RunRecord], None] | None = None,
     ) -> Completed | PendingApproval | InProgress:
         self.hooks.trigger("UserPromptSubmit", user_input)
         if self.session_store is not None and identity is not None:
@@ -190,6 +193,8 @@ class AgentRuntime:
                 )
             return InProgress(started.run.id)
         run = started.run
+        if run_started is not None:
+            run_started(run)
         messages = state["messages"]
         try:
             return self._run(

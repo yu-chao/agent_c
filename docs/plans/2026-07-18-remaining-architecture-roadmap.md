@@ -320,6 +320,10 @@ class ToolPolicy:
 
 ## 9. P1：TaskGraph、Scheduler 与 Run 集成
 
+> 实现状态（2026-07-20）：已完成稳定 UUID、SQLite CAS 任务领取与状态迁移、依赖门控、Task/触发器/Run 关联、
+> cron 时间片唯一触发、延迟任务恢复，以及失败、暂停、取消和审批等待状态对账。任务恢复复用原 Run 的
+> checkpoint 与工具执行账本，不会创建隐式 Run。
+
 ### 现状缺口
 
 `tasks/graph.py` 和 `scheduler/cron.py` 已存在，但没有进入 Session/Run/checkpoint 生命周期，也没有幂等触发和失败恢复。

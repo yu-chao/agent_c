@@ -27,7 +27,11 @@ class RunStateMachine:
             RunStatus.INTERRUPTED,
         },
         RunStatus.INTERRUPTED: {RunStatus.RUNNING},
-        RunStatus.FAILED: {RunStatus.RUNNING},
+        RunStatus.FAILED: {
+            RunStatus.RUNNING,
+            RunStatus.WAITING_APPROVAL,
+            RunStatus.INTERRUPTED,
+        },
         RunStatus.CANCELLED: {
             RunStatus.RUNNING,
             RunStatus.WAITING_APPROVAL,

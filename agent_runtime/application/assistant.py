@@ -23,11 +23,15 @@ class AssistantService:
         *,
         settings: Settings | None = None,
         workdir: Path | None = None,
+        task_service=None,
+        scheduler_service=None,
     ):
         self.runtime = runtime or build_runtime(
             settings=settings,
             workdir=workdir,
         )
+        self.task_service = task_service
+        self.scheduler_service = scheduler_service
         store = self.runtime.approval_store
         if store:
             for request in store.list_uncertain():
@@ -45,6 +49,8 @@ class AssistantService:
                     run.id,
                     run.session_id,
                 )
+                if self.task_service is not None:
+                    self.task_service.reconcile_run(run.id)
 
     async def handle(self, message: InboundMessage):
         identity = RuntimeIdentity(
@@ -118,7 +124,13 @@ class AssistantService:
         )
 
     async def resume_approval(self, approval_id):
-        return await asyncio.to_thread(self.runtime.resume, approval_id)
+        store = self.runtime.approval_store
+        request = store.get(approval_id) if store is not None else None
+        result = await asyncio.to_thread(self.runtime.resume, approval_id)
+        run_id = request.continuation.get("run_id") if request else None
+        if self.task_service is not None and run_id:
+            await asyncio.to_thread(self.task_service.reconcile_run, run_id)
+        return result
 
     async def cancel_approval(self, request):
         store = self.runtime.approval_store
@@ -144,3 +156,40 @@ class AssistantService:
 
     async def resume_run(self, run_id):
         return await asyncio.to_thread(self.runtime.resume_run, run_id)
+
+    async def run_task(self, task_id, trigger_id=None):
+        if self.task_service is None:
+            raise RuntimeError("Task service is disabled")
+        return await asyncio.to_thread(
+            self.task_service.execute, task_id, trigger_id
+        )
+
+    async def resume_task(self, task_id):
+        if self.task_service is None:
+            raise RuntimeError("Task service is disabled")
+        return await asyncio.to_thread(self.task_service.resume, task_id)
+
+    async def pause_task(self, task_id):
+        if self.task_service is None:
+            raise RuntimeError("Task service is disabled")
+        return await asyncio.to_thread(self.task_service.pause, task_id)
+
+    async def cancel_task(self, task_id):
+        if self.task_service is None:
+            raise RuntimeError("Task service is disabled")
+        return await asyncio.to_thread(self.task_service.cancel, task_id)
+
+    async def dispatch_schedules(self, at):
+        if self.scheduler_service is None:
+            raise RuntimeError("Scheduler service is disabled")
+        return await asyncio.to_thread(self.scheduler_service.dispatch_due, at)
+
+    async def recover_tasks(self):
+        if self.task_service is None:
+            raise RuntimeError("Task service is disabled")
+        return await asyncio.to_thread(self.task_service.recover)
+
+    async def recover_schedules(self):
+        if self.scheduler_service is None:
+            raise RuntimeError("Scheduler service is disabled")
+        return await asyncio.to_thread(self.scheduler_service.recover)
