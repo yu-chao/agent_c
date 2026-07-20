@@ -64,6 +64,29 @@ worker 领取后仍须通过会话存储的 CAS 和租约确认 Run 可执行，
 uv run --extra test --extra postgres python -m pytest tests/integration -q
 ```
 
+### 长期记忆与检索
+
+长期记忆默认关闭。启用后，SQLite 使用独立的 `.runtime/memory.db`，PostgreSQL
+后端使用共享数据库中的 `memories` 表：
+
+```yaml
+memory:
+  enabled: true
+  store_path: .runtime/memory.db
+  default_ttl_days: 365
+  max_results: 5
+```
+
+运行时不会从模型回答或会话摘要自动抽取记忆。应用必须通过
+`MemoryService.remember_user_statement()` 或 `AssistantService.remember()` 显式写入
+用户陈述；每条记录包含来源消息、主体、置信度、过期时间和可见范围。检索会先执行
+主体、会话/租户、过期和删除过滤，再把匹配记忆及其来源放在会话摘要之后。
+
+用户可通过 `AssistantService.memories()` 查询系统记住的内容，使用
+`correct_memory()` 创建带新来源的纠正版本，使用 `forget_memory()` 物理删除整条
+纠正链。`private`、`conversation`、`tenant` 三种可见范围分别表示仅主体、当前会话
+和当前租户可见；扩大范围必须由调用方显式指定。
+
 这是一个可扩展的多供应商 Agent 运行时。项目采用“入口与装配层 → 应用层 → 核心协议与能力端口 ← 基础设施适配器”的单向依赖结构。
 
 ## 运行

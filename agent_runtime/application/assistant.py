@@ -193,3 +193,43 @@ class AssistantService:
         if self.scheduler_service is None:
             raise RuntimeError("Scheduler service is disabled")
         return await asyncio.to_thread(self.scheduler_service.recover)
+
+    async def remember(
+        self, identity, content, *, session_id=None, visibility='private'
+    ):
+        service = self.runtime.memory_service
+        if service is None:
+            raise RuntimeError('Long-term memory is disabled')
+        return await asyncio.to_thread(
+            service.remember_user_statement,
+            identity,
+            content,
+            session_id=session_id,
+            visibility=visibility,
+        )
+
+    async def memories(self, identity):
+        service = self.runtime.memory_service
+        if service is None:
+            raise RuntimeError('Long-term memory is disabled')
+        return await asyncio.to_thread(service.what_is_remembered, identity)
+
+    async def correct_memory(
+        self, identity, memory_id, content, *, session_id=None
+    ):
+        service = self.runtime.memory_service
+        if service is None:
+            raise RuntimeError('Long-term memory is disabled')
+        return await asyncio.to_thread(
+            service.correct,
+            identity,
+            memory_id,
+            content,
+            session_id=session_id,
+        )
+
+    async def forget_memory(self, identity, memory_id):
+        service = self.runtime.memory_service
+        if service is None:
+            raise RuntimeError('Long-term memory is disabled')
+        return await asyncio.to_thread(service.forget, identity, memory_id)

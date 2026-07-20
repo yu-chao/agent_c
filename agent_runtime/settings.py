@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 _PROVIDERS = frozenset({'openai', 'anthropic'})
 _TOP_LEVEL_FIELDS = frozenset(
     {'model', 'reliability', 'approval', 'mcp', 'session', 'context', 'skills',
-     'storage', 'system_prompt'}
+     'storage', 'memory', 'system_prompt'}
 )
 _SECTION_FIELDS = {
     'model': frozenset({'provider', 'name'}),
@@ -32,6 +32,9 @@ _SECTION_FIELDS = {
     ),
     'storage': frozenset(
         {'backend', 'postgres_dsn', 'migrate_on_start', 'queue_enabled'}
+    ),
+    'memory': frozenset(
+        {'enabled', 'store_path', 'default_ttl_days', 'max_results'}
     ),
 }
 _MCP_SERVER_FIELDS = frozenset(
@@ -142,6 +145,20 @@ class StorageSettings:
 
 
 @dataclass(frozen=True)
+class MemorySettings:
+    enabled: bool = False
+    store_path: Path = Path('.runtime/memory.db')
+    default_ttl_days: int | None = 365
+    max_results: int = 5
+
+    def __post_init__(self) -> None:
+        if self.default_ttl_days is not None and self.default_ttl_days <= 0:
+            raise ValueError('memory.default_ttl_days must be greater than zero')
+        if self.max_results <= 0:
+            raise ValueError('memory.max_results must be greater than zero')
+
+
+@dataclass(frozen=True)
 class ContextSettings:
     recent_message_limit: int = 20
     max_input_tokens: int = 32000
@@ -193,6 +210,7 @@ class Settings:
     mcp: MCPSettings = field(default_factory=MCPSettings)
     session: SessionSettings = field(default_factory=SessionSettings)
     storage: StorageSettings = field(default_factory=StorageSettings)
+    memory: MemorySettings = field(default_factory=MemorySettings)
     context: ContextSettings = field(default_factory=ContextSettings)
     skills: SkillsSettings = field(default_factory=SkillsSettings)
     system_prompt: str = 'You are a coding agent. Use tools when useful.'
@@ -227,6 +245,7 @@ def load_settings(path: Path | None = None) -> Settings:
     mcp_raw = _section(raw, 'mcp')
     session_raw = _section(raw, 'session')
     storage_raw = _section(raw, 'storage')
+    memory_raw = _section(raw, 'memory')
     context_raw = _section(raw, 'context')
     skills_raw = _section(raw, 'skills')
 
@@ -340,6 +359,30 @@ def load_settings(path: Path | None = None) -> Settings:
                     storage_raw.get('queue_enabled', False),
                     'storage.queue_enabled',
                 ),
+            ),
+        ),
+        memory=MemorySettings(
+            enabled=_environment_bool(
+                'AGENT_MEMORY_ENABLED',
+                _config_bool(
+                    memory_raw.get('enabled', False), 'memory.enabled'
+                ),
+            ),
+            store_path=Path(
+                os.getenv(
+                    'AGENT_MEMORY_STORE',
+                    memory_raw.get('store_path', '.runtime/memory.db'),
+                )
+            ),
+            default_ttl_days=_environment_optional_int(
+                'AGENT_MEMORY_DEFAULT_TTL_DAYS',
+                memory_raw.get('default_ttl_days', 365),
+            ),
+            max_results=int(
+                os.getenv(
+                    'AGENT_MEMORY_MAX_RESULTS',
+                    memory_raw.get('max_results', 5),
+                )
             ),
         ),
         context=ContextSettings(
@@ -496,6 +539,15 @@ def _environment_optional_text(name: str, default: Any) -> Any:
     if not value.strip():
         return None
     return value
+
+
+def _environment_optional_int(name: str, default: Any) -> int | None:
+    value = os.getenv(name)
+    if value is None:
+        value = default
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return int(value)
 
 
 def _default_config_path() -> Path:

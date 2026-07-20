@@ -8,6 +8,11 @@ from agent_runtime.core import AgentRuntime
 from agent_runtime.context import ContextManager, ContextWindow
 from agent_runtime.hooks import HookManager
 from agent_runtime.mcp import MCPHub
+from agent_runtime.memory import (
+    MemoryService,
+    PostgresMemoryStore,
+    SQLiteMemoryStore,
+)
 from agent_runtime.models import create_model_provider
 from agent_runtime.models.resilient import RetryPolicy
 from agent_runtime.security import PermissionPolicy
@@ -72,6 +77,23 @@ def build_runtime(
             session_store = SQLiteSessionStore(
                 session_path, lease_seconds=settings.session.lease_seconds
             )
+    memory_service = None
+    if settings.memory.enabled:
+        if settings.storage.backend == 'postgres':
+            memory_store = PostgresMemoryStore(
+                settings.storage.postgres_dsn or '',
+                migrate=settings.storage.migrate_on_start,
+            )
+        else:
+            memory_path = settings.memory.store_path
+            if not memory_path.is_absolute():
+                memory_path = workdir / memory_path
+            memory_store = SQLiteMemoryStore(memory_path)
+        memory_service = MemoryService(
+            memory_store,
+            default_ttl_days=settings.memory.default_ttl_days,
+            max_results=settings.memory.max_results,
+        )
     context_options = {
         'max_input_tokens': settings.context.max_input_tokens,
         'tool_result_max_tokens': settings.context.tool_result_max_tokens,
@@ -83,6 +105,7 @@ def build_runtime(
                 settings.context.summary_trigger_tokens
             ),
             recent_message_limit=settings.context.recent_message_limit,
+            memory_service=memory_service,
             **context_options,
         )
     else:
@@ -104,6 +127,7 @@ def build_runtime(
         context_manager=context_manager,
         skill_loader=skill_loader,
         skill_selector=skill_selector,
+        memory_service=memory_service,
     )
 
 

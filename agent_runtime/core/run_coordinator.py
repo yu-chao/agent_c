@@ -51,7 +51,8 @@ class RunCoordinator:
         state = self.codec.decode(checkpoint.state) if checkpoint else {}
         if started.is_new and self.context_manager is not None:
             built = self.context_manager.build(
-                started.run.session_id, started.run.id
+                started.run.session_id, started.run.id,
+                identity=identity, query=user_content,
             )
             state['messages'] = built.messages
             if built.summary_version is not None:
