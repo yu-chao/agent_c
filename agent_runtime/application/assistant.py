@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 
 from agent_runtime.approval import RuntimeIdentity
 from agent_runtime.bootstrap import build_runtime
 from agent_runtime.core import AgentRuntime
 from agent_runtime.gateway.models import InboundMessage
+from agent_runtime.observability import ensure_trace, trace_id_for_message
 from agent_runtime.settings import Settings
 
 
@@ -52,11 +54,50 @@ class AssistantService:
             message.message_id,
             message.metadata,
         )
-        return await asyncio.to_thread(
-            self.runtime.run_turn,
-            message.to_agent_input(),
-            identity,
-        )
+        with ensure_trace(
+            trace_id=trace_id_for_message(
+                message.platform, message.message_id
+            ),
+            session_id=message.session_id,
+            message_id=message.message_id,
+        ):
+            with self.runtime.observability.span(
+                "agent.gateway", platform=message.platform
+            ) as span:
+                started = time.monotonic()
+                try:
+                    result = await asyncio.to_thread(
+                        self.runtime.run_turn,
+                        message.to_agent_input(),
+                        identity,
+                    )
+                except Exception:
+                    self.runtime.observability.increment(
+                        "agent_gateway_messages_total",
+                        status="error",
+                        platform=message.platform,
+                    )
+                    self.runtime.observability.observe(
+                        "agent_gateway_duration_seconds",
+                        time.monotonic() - started,
+                        platform=message.platform,
+                    )
+                    raise
+                if span is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute(
+                        "run_id", self.runtime._identity_run_id(identity)
+                    )
+                self.runtime.observability.increment(
+                    "agent_gateway_messages_total",
+                    status="success",
+                    platform=message.platform,
+                )
+                self.runtime.observability.observe(
+                    "agent_gateway_duration_seconds",
+                    time.monotonic() - started,
+                    platform=message.platform,
+                )
+                return result
 
     async def decide_approval(
         self,

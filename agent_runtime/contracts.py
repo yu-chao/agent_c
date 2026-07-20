@@ -49,6 +49,9 @@ class ModelResponse:
     model: str | None = None
     attempts: int = 1
     used_fallback: bool = False
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float | None = None
 
     @property
     def text(self) -> str:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import uuid
 
 from agent_runtime.approval import (
     ApprovalRequest,
@@ -27,6 +29,12 @@ from agent_runtime.core.tool_coordinator import ToolExecutionCoordinator
 from agent_runtime.core.tool_execution import ToolExecutor
 from agent_runtime.security import PermissionAction, PermissionDecision
 from agent_runtime.skills import LoadedSkill, SkillSnapshot
+from agent_runtime.observability import (
+    Observability,
+    bind_context,
+    ensure_trace,
+    trace_id_for_message,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +56,7 @@ class AgentRuntime:
         context_manager=None,
         skill_loader=None,
         skill_selector=None,
+        observability: Observability | None = None,
     ):
         self.model = model
         self.tools = tools
@@ -66,6 +75,7 @@ class AgentRuntime:
         self.context_manager = context_manager
         self.skill_loader = skill_loader
         self.skill_selector = skill_selector
+        self.observability = observability or Observability()
         self.run_coordinator = (
             RunCoordinator(
                 session_store,
@@ -96,6 +106,49 @@ class AgentRuntime:
         return self.session_store.renew_run(run_id)
 
     def run_turn(
+        self, user_input: str, identity: RuntimeIdentity | None = None
+    ) -> Completed | PendingApproval | InProgress:
+        session_id = (
+            f"{identity.platform}:{identity.conversation_id}"
+            if identity is not None else None
+        )
+        started = time.monotonic()
+        with ensure_trace(
+            trace_id=(
+                trace_id_for_message(identity.platform, identity.message_id)
+                if identity else None
+            ),
+            session_id=session_id,
+            message_id=identity.message_id if identity else None,
+        ):
+            with self.observability.span("agent.run") as span:
+                try:
+                    result = self._run_turn(user_input, identity)
+                except Exception:
+                    self.observability.increment(
+                        "agent_runs_total", status="error"
+                    )
+                    self.observability.observe(
+                        "agent_run_duration_seconds",
+                        time.monotonic() - started,
+                        status="error",
+                    )
+                    raise
+                run_id = self._identity_run_id(identity)
+                if span is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute("run_id", run_id)
+                    span.set_attribute("status", _result_status(result))
+                self.observability.increment(
+                    "agent_runs_total", status=_result_status(result)
+                )
+                self.observability.observe(
+                    "agent_run_duration_seconds",
+                    time.monotonic() - started,
+                    status=_result_status(result),
+                )
+                return result
+
+    def _run_turn(
         self, user_input: str, identity: RuntimeIdentity | None = None
     ) -> Completed | PendingApproval | InProgress:
         self.hooks.trigger("UserPromptSubmit", user_input)
@@ -152,6 +205,17 @@ class AgentRuntime:
         run: RunRecord | None = None,
         active_skills: tuple[LoadedSkill, ...] = (),
     ):
+        with bind_context(run_id=run.id if run else None):
+            return self._run_bound(
+                messages, previous_response_id, identity, start_turn, run,
+                active_skills,
+            )
+
+    def _run_bound(
+        self, messages, previous_response_id, identity, start_turn,
+        run: RunRecord | None = None,
+        active_skills: tuple[LoadedSkill, ...] = (),
+    ):
         effective_system = self._effective_system(active_skills)
         for turn in range(start_turn, self.max_turns):
             tool_specs, handlers = self.tools.assemble()
@@ -173,7 +237,7 @@ class AgentRuntime:
                 active_skills=active_skills,
             )
             with self._heartbeat(run):
-                response = self.model.generate(
+                response = self._generate_model(
                     ModelRequest(
                         messages=self._provider_messages(messages),
                         system=effective_system,
@@ -285,6 +349,21 @@ class AgentRuntime:
                     call=call,
                     continuation=continuation,
                 )
+                with bind_context(approval_id=request.id):
+                    with self.observability.span(
+                        "agent.approval", status="pending", tool=call.name
+                    ):
+                        self.observability.increment(
+                            "agent_approvals_total",
+                            status="pending",
+                            tool=call.name,
+                        )
+                        logger.info(
+                            "approval_created id=%s tool=%s status=%s",
+                            request.id,
+                            request.tool_name,
+                            request.status,
+                        )
                 self._save_checkpoint(
                     run,
                     "waiting_approval",
@@ -295,12 +374,6 @@ class AgentRuntime:
                     action="approval",
                     approval_id=request.id,
                     active_skills=active_skills,
-                )
-                logger.info(
-                    "approval_created id=%s tool=%s status=%s",
-                    request.id,
-                    request.tool_name,
-                    request.status,
                 )
                 if self.session_store is not None and run is not None:
                     self.session_store.transition_run(
@@ -330,10 +403,151 @@ class AgentRuntime:
         return None
 
     def _invoke_tool(self, call, handlers, run):
-        with self._heartbeat(run):
-            return self.tool_execution.invoke(call, handlers, run)
+        execution_id = (
+            f"{run.id}:{call.id}" if run is not None
+            else f"tool_{uuid.uuid4().hex}"
+        )
+        started = time.monotonic()
+        with bind_context(tool_execution_id=execution_id):
+            with self.observability.span(
+                "agent.tool",
+                tool=call.name,
+                tool_call_id=call.id,
+            ):
+                try:
+                    with self._heartbeat(run):
+                        output = self.tool_execution.invoke(call, handlers, run)
+                except Exception:
+                    self.observability.increment(
+                        "agent_tool_executions_total",
+                        status="error",
+                        tool=call.name,
+                    )
+                    self.observability.observe(
+                        "agent_tool_duration_seconds",
+                        time.monotonic() - started,
+                        tool=call.name,
+                    )
+                    raise
+                self.observability.increment(
+                    "agent_tool_executions_total",
+                    status="success",
+                    tool=call.name,
+                )
+                self.observability.observe(
+                    "agent_tool_duration_seconds",
+                    time.monotonic() - started,
+                    tool=call.name,
+                )
+                return output
+
+    def _generate_model(self, request: ModelRequest):
+        request_id = f"model_{uuid.uuid4().hex}"
+        started = time.monotonic()
+        with bind_context(model_request_id=request_id):
+            with self.observability.span("agent.model") as span:
+                try:
+                    response = self.model.generate(request)
+                except Exception:
+                    self.observability.increment(
+                        "agent_model_requests_total", status="error"
+                    )
+                    self.observability.observe(
+                        "agent_model_duration_seconds",
+                        time.monotonic() - started,
+                        provider=getattr(self.model, "provider", "unknown"),
+                        model=getattr(self.model, "model", "unknown"),
+                    )
+                    raise
+                labels = {
+                    "provider": response.provider or getattr(
+                        self.model, "provider", "unknown"
+                    ),
+                    "model": response.model or getattr(
+                        self.model, "model", "unknown"
+                    ),
+                }
+                if span is not None and hasattr(span, "set_attribute"):
+                    for key, value in labels.items():
+                        span.set_attribute(key, value)
+                    span.set_attribute("attempts", response.attempts)
+                    span.set_attribute("input_tokens", response.input_tokens)
+                    span.set_attribute("output_tokens", response.output_tokens)
+                self.observability.increment(
+                    "agent_model_requests_total",
+                    status="success",
+                    **labels,
+                )
+                self.observability.observe(
+                    "agent_model_duration_seconds",
+                    time.monotonic() - started,
+                    **labels,
+                )
+                self.observability.increment(
+                    "agent_model_tokens_total",
+                    response.input_tokens,
+                    direction="input",
+                    **labels,
+                )
+                self.observability.increment(
+                    "agent_model_tokens_total",
+                    response.output_tokens,
+                    direction="output",
+                    **labels,
+                )
+                self.observability.increment(
+                    "agent_model_retries_total",
+                    max(response.attempts - 1, 0),
+                    **labels,
+                )
+                if response.cost_usd is not None:
+                    self.observability.increment(
+                        "agent_model_cost_usd_total",
+                        response.cost_usd,
+                        **labels,
+                    )
+                return response
 
     def resume(
+        self, approval_id: str
+    ) -> Completed | PendingApproval | InProgress:
+        request = (
+            self.approvals.load_for_resume(approval_id)
+            if self.approvals is not None else None
+        )
+        run_id = request.continuation.get("run_id") if request else None
+        session_id = request.continuation.get("session_id") if request else None
+        with ensure_trace(
+            trace_id=(
+                trace_id_for_message(
+                    request.identity.platform, request.identity.message_id
+                ) if request else None
+            ),
+            session_id=session_id,
+            run_id=run_id,
+            message_id=request.identity.message_id if request else None,
+            approval_id=approval_id,
+        ):
+            with self.observability.span(
+                "agent.recovery", recovery_count=1, kind="approval"
+            ) as span:
+                self.observability.increment(
+                    "agent_recoveries_total", kind="approval"
+                )
+                result = self._resume(approval_id)
+                latest = (
+                    self.approvals.load_for_resume(approval_id)
+                    if self.approvals is not None else None
+                )
+                status = latest.status.value if latest else "not_found"
+                if span is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute("approval_status", status)
+                self.observability.increment(
+                    "agent_approvals_total", status=status
+                )
+                return result
+
+    def _resume(
         self, approval_id: str
     ) -> Completed | PendingApproval | InProgress:
         if self.approvals is None:
@@ -419,6 +633,28 @@ class AgentRuntime:
         )
 
     def resume_run(
+        self, run_id: str
+    ) -> Completed | PendingApproval | InProgress:
+        run = self.session_store.get_run(run_id) if self.session_store else None
+        with ensure_trace(
+            trace_id=(
+                trace_id_for_message(
+                    run.inbound_platform, run.inbound_message_id
+                ) if run else None
+            ),
+            session_id=run.session_id if run else None,
+            run_id=run_id,
+            message_id=run.inbound_message_id if run else None,
+        ):
+            with self.observability.span(
+                "agent.recovery", recovery_count=1, kind="run"
+            ):
+                self.observability.increment(
+                    "agent_recoveries_total", kind="run"
+                )
+                return self._resume_run(run_id)
+
+    def _resume_run(
         self, run_id: str
     ) -> Completed | PendingApproval | InProgress:
         if self.session_store is None:
@@ -560,6 +796,17 @@ class AgentRuntime:
             self.run_coordinator.complete(run, response)
         return Completed(response)
 
+    def _identity_run_id(self, identity: RuntimeIdentity | None) -> str | None:
+        if self.session_store is None or identity is None:
+            return None
+        try:
+            inbound = self.session_store.get_inbound(
+                identity.platform, identity.message_id
+            )
+            return inbound.run.id if inbound is not None else None
+        except Exception:
+            return None
+
     @staticmethod
     def _encode_identity(identity):
         return RunCoordinator.encode_identity(identity)
@@ -684,3 +931,11 @@ class AgentRuntime:
         if self.approvals is None:
             return []
         return self.approvals.recoverable()
+
+
+def _result_status(result) -> str:
+    if isinstance(result, PendingApproval):
+        return "pending_approval"
+    if isinstance(result, InProgress):
+        return "in_progress"
+    return "completed"

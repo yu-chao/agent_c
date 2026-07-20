@@ -34,6 +34,24 @@ checkpoint 包含 `schema_version`，模型消息的线格式只由 `CheckpointC
 如果工具账本处于 `running` 且没有结果，说明副作用是否发生无法确定。运行时不会
 自动重放该工具，而是把 Run 标记为 `failed`，等待人工对账。
 
+## 可观测性
+
+`agent_runtime.observability` 不依赖具体供应商。ContextVar 在网关和运行循环间
+传播 trace_id、session_id、run_id、message_id、模型请求、工具执行和审批标识。
+AgentRuntime 为 Run、模型、工具、审批及恢复建立 Span，并记录调用次数、延迟、
+token、费用、重试次数和恢复次数。
+
+默认 InMemorySpanExporter 支持通过
+`runtime.observability.tracer.exporter.spans(run_id=...)` 查询当前进程内某个 Run
+的完整事件链。生产部署可注入实现 `SpanExporter.export()` 的外部 exporter；
+运行循环不直接依赖 OpenTelemetry 或特定监控后端。
+
+`MetricsRegistry.snapshot()` 返回线程安全的计数器和直方图快照，便于管理接口或
+采集器转换为 Prometheus/OpenTelemetry 格式。日志由 `setup_logging()` 输出单行
+JSON，自动附加当前关联字段，并递归脱敏 token、密码、Authorization 和 API Key。
+日志文件、指标记录或 Trace 导出失败时均按 fail-open（失败时放行业务）处理，
+不得改变 Run 的成功、失败或异常语义。
+
 ## 数据库迁移
 
 SQLite 存储使用 `PRAGMA user_version` 记录 schema 版本。审批关联历史数据只在对应

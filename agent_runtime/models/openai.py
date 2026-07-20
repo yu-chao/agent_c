@@ -61,6 +61,12 @@ class OpenAIProvider:
         return ModelResponse(
             blocks=self._parse_output(getattr(response, "output", [])),
             response_id=getattr(response, "id", None),
+            input_tokens=int(
+                _get(getattr(response, "usage", None), "input_tokens") or 0
+            ),
+            output_tokens=int(
+                _get(getattr(response, "usage", None), "output_tokens") or 0
+            ),
         )
 
     def _convert_messages(self, messages: list[MessageBlock | dict[str, Any]]) -> list[dict[str, Any]]:
