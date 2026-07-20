@@ -192,6 +192,27 @@ class PostgresApprovalStore:
             (ApprovalStatus.EXECUTING.value,),
         )
 
+    def list_for_admin(
+        self, *, tenant_id: str | None = None,
+        status: str | None = None, limit: int = 100,
+    ) -> list[ApprovalRequest]:
+        clauses = []
+        values: list[Any] = []
+        if tenant_id is not None:
+            clauses.append(
+                "COALESCE(metadata_json->>'tenant_id','default')=%s"
+            )
+            values.append(tenant_id)
+        if status is not None:
+            clauses.append("status=%s")
+            values.append(status)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        return self._list(
+            "SELECT * FROM approvals" + where
+            + " ORDER BY created_at DESC LIMIT %s",
+            (*values, limit),
+        )
+
     def _list(self, query: str, values: tuple[Any, ...]) -> list[ApprovalRequest]:
         with self._connect() as db:
             rows = db.execute(query, values).fetchall()

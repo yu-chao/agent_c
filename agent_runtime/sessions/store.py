@@ -40,9 +40,11 @@ class SQLiteSessionStore:
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
                   id TEXT PRIMARY KEY, platform TEXT NOT NULL,
-                  conversation_id TEXT NOT NULL, created_at TEXT NOT NULL,
+                  conversation_id TEXT NOT NULL,
+                  tenant_id TEXT NOT NULL DEFAULT 'default',
+                  created_at TEXT NOT NULL,
                   updated_at TEXT NOT NULL,
-                  UNIQUE(platform, conversation_id));
+                  UNIQUE(tenant_id, platform, conversation_id));
                 CREATE TABLE IF NOT EXISTS runs (
                   id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
                   inbound_platform TEXT NOT NULL,
@@ -105,6 +107,11 @@ class SQLiteSessionStore:
                     "ALTER TABLE runs ADD COLUMN execution_token "
                     "INTEGER NOT NULL DEFAULT 1"
                 )
+            session_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(sessions)")
+            }
+            if "tenant_id" not in session_columns:
+                self._migrate_session_tenants(db)
             db.execute("PRAGMA user_version=1")
 
     def _connect(self) -> sqlite3.Connection:
@@ -131,6 +138,7 @@ class SQLiteSessionStore:
                 "user_content and initial_checkpoint must be provided together"
             )
         now = _now()
+        tenant_id = _tenant_id(metadata)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             existing = db.execute(
@@ -144,17 +152,19 @@ class SQLiteSessionStore:
                 ).fetchone())
                 return InboundStart(False, run, existing["response"])
             session = db.execute(
-                "SELECT id FROM sessions WHERE platform=? AND conversation_id=?",
-                (platform, conversation_id),
+                "SELECT id FROM sessions WHERE tenant_id=? AND platform=? "
+                "AND conversation_id=?",
+                (tenant_id, platform, conversation_id),
             ).fetchone()
             session_id = session["id"] if session else _session_id(
-                platform, conversation_id
+                tenant_id, platform, conversation_id
             )
             db.execute(
-                "INSERT INTO sessions VALUES(?,?,?,?,?) "
-                "ON CONFLICT(platform,conversation_id) DO UPDATE SET "
+                "INSERT INTO sessions(id,platform,conversation_id,tenant_id,"
+                "created_at,updated_at) VALUES(?,?,?,?,?,?) "
+                "ON CONFLICT(tenant_id,platform,conversation_id) DO UPDATE SET "
                 "updated_at=excluded.updated_at",
-                (session_id, platform, conversation_id, now, now),
+                (session_id, platform, conversation_id, tenant_id, now, now),
             )
             run_id = f"run_{uuid.uuid4().hex}"
             db.execute(
@@ -194,6 +204,30 @@ class SQLiteSessionStore:
                 )
             row = db.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
             return InboundStart(True, _run(row))
+
+    @staticmethod
+    def _migrate_session_tenants(db: sqlite3.Connection) -> None:
+        """Rebuild the legacy table so its old two-column UNIQUE is removed."""
+        db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            db.executescript(
+                """
+                CREATE TABLE sessions_with_tenant (
+                  id TEXT PRIMARY KEY, platform TEXT NOT NULL,
+                  conversation_id TEXT NOT NULL,
+                  tenant_id TEXT NOT NULL DEFAULT 'default',
+                  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                  UNIQUE(tenant_id, platform, conversation_id));
+                INSERT INTO sessions_with_tenant(
+                  id,platform,conversation_id,tenant_id,created_at,updated_at)
+                SELECT id,platform,conversation_id,'default',created_at,updated_at
+                FROM sessions;
+                DROP TABLE sessions;
+                ALTER TABLE sessions_with_tenant RENAME TO sessions;
+                """
+            )
+        finally:
+            db.execute("PRAGMA foreign_keys=ON")
 
     def start_inbound(
         self,
@@ -626,11 +660,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _session_id(platform: str, conversation_id: str) -> str:
+def _session_id(tenant_id: str, platform: str, conversation_id: str) -> str:
     value = json.dumps(
-        [platform, conversation_id], ensure_ascii=False, separators=(",", ":")
+        [tenant_id, platform, conversation_id],
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
     return "session_" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+
+
+def _tenant_id(metadata: dict[str, Any] | None) -> str:
+    tenant_id = (metadata or {}).get("tenant_id", "default")
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        raise ValueError("metadata.tenant_id must be a non-empty string")
+    return tenant_id.strip()
 
 
 def _json(value: Any) -> str:

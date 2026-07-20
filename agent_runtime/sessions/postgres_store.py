@@ -70,6 +70,7 @@ class PostgresSessionStore:
                 "user_content and initial_checkpoint must be provided together"
             )
         now = _now()
+        tenant_id = _tenant_id(metadata)
         with self._connect() as db:
             db.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
@@ -85,16 +86,18 @@ class PostgresSessionStore:
                     "SELECT * FROM runs WHERE id=%s", (existing["run_id"],)
                 ).fetchone())
                 return InboundStart(False, run, existing["response"])
-            session_id = _session_id(platform, conversation_id)
+            session_id = _session_id(tenant_id, platform, conversation_id)
             db.execute(
-                "INSERT INTO sessions VALUES(%s,%s,%s,%s,%s) "
-                "ON CONFLICT(platform,conversation_id) DO UPDATE SET "
+                "INSERT INTO sessions(id,platform,conversation_id,created_at,"
+                "updated_at,tenant_id) VALUES(%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT(tenant_id,platform,conversation_id) DO UPDATE SET "
                 "updated_at=EXCLUDED.updated_at",
-                (session_id, platform, conversation_id, now, now),
+                (session_id, platform, conversation_id, now, now, tenant_id),
             )
             session_id = db.execute(
-                "SELECT id FROM sessions WHERE platform=%s AND conversation_id=%s",
-                (platform, conversation_id),
+                "SELECT id FROM sessions WHERE tenant_id=%s AND platform=%s "
+                "AND conversation_id=%s",
+                (tenant_id, platform, conversation_id),
             ).fetchone()["id"]
             run_id = f"run_{uuid.uuid4().hex}"
             db.execute(
@@ -494,11 +497,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _session_id(platform: str, conversation_id: str) -> str:
+def _session_id(tenant_id: str, platform: str, conversation_id: str) -> str:
     value = json.dumps(
-        [platform, conversation_id], ensure_ascii=False, separators=(",", ":")
+        [tenant_id, platform, conversation_id],
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
     return "session_" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+
+
+def _tenant_id(metadata: dict[str, Any] | None) -> str:
+    tenant_id = (metadata or {}).get("tenant_id", "default")
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        raise ValueError("metadata.tenant_id must be a non-empty string")
+    return tenant_id.strip()
 
 
 def _jsonb(value: Any):
