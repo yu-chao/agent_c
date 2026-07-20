@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 
 
 def validate_cron(cron_expr: str) -> str | None:
@@ -21,6 +22,16 @@ def cron_matches(cron_expr: str, dt: datetime) -> bool:
     minute, hour, day, month, weekday = cron_expr.split()
     values = [dt.minute, dt.hour, dt.day, dt.month, dt.weekday()]
     return all(_field_matches(field, value) for field, value in zip([minute, hour, day, month, weekday], values))
+
+
+def cron_slot(dt: datetime) -> str:
+    """Return the canonical minute used by the durable trigger key."""
+    return dt.replace(second=0, microsecond=0).isoformat()
+
+
+def cron_trigger_id(schedule_id: str, dt: datetime) -> str:
+    value = f"{schedule_id}:{cron_slot(dt)}".encode("utf-8")
+    return "trigger_" + hashlib.sha256(value).hexdigest()[:32]
 
 
 def _validate_field(field: str, lo: int, hi: int) -> str | None:
