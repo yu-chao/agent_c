@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import defaultdict
 from collections.abc import Iterable
 
 from agent_runtime.approval import RuntimeIdentity
 from agent_runtime.core import AgentRuntime
+from agent_runtime.observability import (
+    DEFAULT_OBSERVABILITY,
+    ensure_trace,
+    trace_id_for_message,
+)
 from .base import MessageGateway
 from .models import InboundMessage, OutboundMessage
 
@@ -28,12 +34,55 @@ class GatewayRunner:
             message.message_id,
             message.metadata,
         )
-        async with self._session_locks[message.session_id]:
-            answer = await asyncio.to_thread(
-                self.runtime.run_turn,
-                message.to_agent_input(),
-                identity,
-            )
+        observability = getattr(
+            self.runtime, "observability", DEFAULT_OBSERVABILITY
+        )
+        started = time.monotonic()
+        with ensure_trace(
+            trace_id=trace_id_for_message(
+                message.platform, message.message_id
+            ),
+            session_id=message.session_id,
+            message_id=message.message_id,
+        ):
+            with observability.span(
+                "agent.gateway", platform=message.platform
+            ) as span:
+                try:
+                    async with self._session_locks[message.session_id]:
+                        answer = await asyncio.to_thread(
+                            self.runtime.run_turn,
+                            message.to_agent_input(),
+                            identity,
+                        )
+                except Exception:
+                    observability.increment(
+                        "agent_gateway_messages_total",
+                        status="error",
+                        platform=message.platform,
+                    )
+                    observability.observe(
+                        "agent_gateway_duration_seconds",
+                        time.monotonic() - started,
+                        platform=message.platform,
+                    )
+                    raise
+                run_id = (
+                    self.runtime._identity_run_id(identity)
+                    if hasattr(self.runtime, "_identity_run_id") else None
+                )
+                if span is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute("run_id", run_id)
+                observability.increment(
+                    "agent_gateway_messages_total",
+                    status="success",
+                    platform=message.platform,
+                )
+                observability.observe(
+                    "agent_gateway_duration_seconds",
+                    time.monotonic() - started,
+                    platform=message.platform,
+                )
         return OutboundMessage(message.conversation_id, answer, message.message_id, message.metadata)
 
     async def run_forever(self) -> None:

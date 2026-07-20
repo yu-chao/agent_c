@@ -49,7 +49,13 @@ class AnthropicProvider:
             )
         except Exception as error:
             raise classify_model_error(error) from error
-        return ModelResponse(blocks=self._parse_content(response.content))
+        usage = getattr(response, "usage", None)
+        return ModelResponse(
+            blocks=self._parse_content(response.content),
+            response_id=getattr(response, "id", None),
+            input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+        )
 
     def _convert_messages(self, messages: list[MessageBlock | dict[str, Any]]) -> list[dict[str, Any]]:
         converted: list[dict[str, Any]] = []
