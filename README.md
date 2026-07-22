@@ -238,6 +238,11 @@ SQLite 可通过 `build_admin_service()` 和 `build_retention_service()` 复用 
 
 ## 扩展一个工具
 
+`build_tool_registry()` 会默认注册 `read_file` 和 `write_file`，并将文件访问范围
+限制在传入的 `workdir` 中。`read_file` 接收目录路径时返回该目录的条目列表；启用
+MCP 时，MCP 工具会继续合并到同一个注册表。工具执行失败会作为结果返回模型，
+不会因可恢复的参数或文件错误中断整个 Run。
+
 ```python
 from agent_runtime.tools import ToolRegistry, ToolSpec
 

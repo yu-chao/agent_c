@@ -29,7 +29,7 @@ from agent_runtime.security import PermissionPolicy
 from agent_runtime.sessions import PostgresSessionStore, SQLiteSessionStore
 from agent_runtime.skills import SkillLoader, SkillSelector
 from agent_runtime.settings import Settings, load_settings
-from agent_runtime.tools import ToolRegistry
+from agent_runtime.tools import ToolRegistry, build_default_tool_registry
 from agent_runtime.tasks import PostgresRunQueue
 
 
@@ -41,7 +41,7 @@ def build_runtime(
 ) -> AgentRuntime:
     settings = settings or load_settings()
     workdir = (workdir or Path.cwd()).resolve()
-    registry = build_tool_registry(settings)
+    registry = build_tool_registry(settings, workdir)
     skill_loader = None
     skill_selector = None
     if settings.skills.enabled:
@@ -219,9 +219,12 @@ def _build_governance_repository(settings, *, workdir, retention):
     return cls(path)
 
 
-def build_tool_registry(settings: Settings) -> ToolRegistry:
+def build_tool_registry(
+    settings: Settings, workdir: str | Path | None = None
+) -> ToolRegistry:
+    registry = build_default_tool_registry(workdir)
     if not settings.mcp.enabled_servers:
-        return ToolRegistry()
+        return registry
     configured = {
         str(server.get('name')): server
         for server in settings.mcp.servers
@@ -240,4 +243,5 @@ def build_tool_registry(settings: Settings) -> ToolRegistry:
         for name in settings.mcp.enabled_servers
     )
     hub = MCPHub.from_servers(selected)
-    return hub.connect_enabled(settings.mcp.enabled_servers)
+    registry.extend(hub.connect_enabled(settings.mcp.enabled_servers))
+    return registry

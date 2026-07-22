@@ -128,6 +128,32 @@ def test_bootstrap_rejects_unknown_enabled_mcp_server():
         build_tool_registry(settings)
 
 
+def test_bootstrap_registers_default_file_tools(tmp_path):
+    registry = build_tool_registry(Settings(), tmp_path)
+    tools, handlers = registry.assemble()
+
+    assert [tool.name for tool in tools] == ["read_file", "write_file"]
+    assert handlers["write_file"](
+        {"path": "notes/result.txt", "content": "完成"}
+    ) == "Wrote file: notes/result.txt"
+    assert handlers["read_file"]({"path": "notes/result.txt"}) == "完成"
+    assert handlers["read_file"]({"path": "."}) == (
+        "Directory listing for .:\nnotes"
+    )
+
+
+@pytest.mark.parametrize("tool_name", ("read_file", "write_file"))
+def test_default_file_tools_reject_workspace_escape(tmp_path, tool_name):
+    registry = build_tool_registry(Settings(), tmp_path)
+    _, handlers = registry.assemble()
+    arguments = {"path": "../outside.txt"}
+    if tool_name == "write_file":
+        arguments["content"] = "bad"
+
+    with pytest.raises(ValueError, match="escapes storage root"):
+        handlers[tool_name](arguments)
+
+
 def test_settings_parse_session_and_short_term_context(tmp_path):
     config = tmp_path / 'settings.yaml'
     config.write_text(

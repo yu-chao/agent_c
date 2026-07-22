@@ -1,0 +1,11 @@
+name: mysql-table-design-review
+version: 1.0.0
+description: 校验数据库表 DDL、离线评审建表语句、检查表设计、审查字段注释、检查枚举或字典码、检查逻辑删除与审计字段，或输出数据库设计问题单和整改建议
+entrypoint: SKILL.md
+required_tools:
+  - read_file
+permissions:
+  filesystem: read
+activation:
+  keywords:
+    - 表设计评审

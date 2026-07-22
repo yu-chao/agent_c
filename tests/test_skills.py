@@ -65,6 +65,20 @@ def test_loader_discovers_and_validates_skill(tmp_path: Path):
     assert len(skills[0].snapshot.content_digest) == 64
 
 
+def test_loader_expands_environment_variable_in_root(
+    tmp_path: Path, monkeypatch
+):
+    _write_skill(tmp_path, "review")
+    monkeypatch.setenv("AGENT_TEST_SKILL_ROOT", str(tmp_path))
+
+    skills = SkillLoader(
+        ("$AGENT_TEST_SKILL_ROOT",),
+        available_tools={"read_file"},
+    ).load()
+
+    assert [skill.manifest.name for skill in skills] == ["code-review"]
+
+
 @pytest.mark.parametrize("version", ["1", "latest", "1.0", "v1.0.0"])
 def test_loader_rejects_invalid_semver(tmp_path: Path, version: str):
     _write_skill(tmp_path, "review", version=version)

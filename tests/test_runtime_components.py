@@ -84,6 +84,35 @@ def test_runtime_executes_tool_call_and_continues_until_text_response():
     assert isinstance(model.requests[1].messages[-1], ToolResult)
 
 
+def test_runtime_returns_tool_failure_to_model():
+    model = FakeModel(
+        [
+            ModelResponse(
+                blocks=[ToolCall(id="call_1", name="broken", input={})],
+                response_id="r1",
+            ),
+            ModelResponse(blocks=[TextBlock("recovered")], response_id="r2"),
+        ]
+    )
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec("broken", "Always fails", {"type": "object"}),
+        _raise_tool_error,
+    )
+    runtime = AgentRuntime(model=model, tools=registry)
+
+    answer = runtime.run_turn("run broken tool")
+
+    assert answer == "recovered"
+    assert model.requests[1].messages[-1] == ToolResult(
+        "call_1", "Tool execution failed: boom"
+    )
+
+
+def _raise_tool_error():
+    raise OSError("boom")
+
+
 class FakeModel:
     def __init__(self, responses):
         self.responses = list(responses)

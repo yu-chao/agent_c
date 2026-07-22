@@ -11,6 +11,9 @@ class FileStore:
     def read_text(self, path: str) -> str:
         return self._resolve(path).read_text(encoding="utf-8")
 
+    def is_directory(self, path: str) -> bool:
+        return self._resolve(path).is_dir()
+
     def write_text(self, path: str, content: str) -> None:
         target = self._resolve(path)
         target.parent.mkdir(parents=True, exist_ok=True)

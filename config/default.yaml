@@ -31,7 +31,7 @@ context:
 skills:
   enabled: true
   paths:
-    - config/skills
+    - ../config/skills
   max_active: 3
   allowed_filesystem: read
 approval:

@@ -39,3 +39,16 @@ def test_postgres_backend_requires_dsn():
 def test_queue_cannot_be_enabled_for_sqlite():
     with pytest.raises(ValueError, match="queue_enabled"):
         StorageSettings(queue_enabled=True)
+
+
+def test_postgres_advisory_lock_key_has_no_nul_bytes():
+    from agent_runtime.approval.postgres_store import (
+        _advisory_lock_key as approval_lock_key,
+    )
+    from agent_runtime.sessions.postgres_store import _advisory_lock_key
+
+    for key in (
+        _advisory_lock_key("wecom", "msg\x00id"),
+        approval_lock_key("run_abc", "call\x001"),
+    ):
+        assert "\x00" not in key

@@ -392,7 +392,10 @@ class AgentRuntime:
             if decision.action is PermissionAction.DENY:
                 output = decision.reason
             else:
-                output = self._invoke_tool(call, handlers, run)
+                try:
+                    output = self._invoke_tool(call, handlers, run)
+                except Exception as exc:
+                    output = f"Tool execution failed: {exc}"
             results.append(ToolResult(call.id, str(output)))
             remaining = calls[index + 1:]
             self._save_checkpoint(

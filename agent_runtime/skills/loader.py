@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -48,7 +49,7 @@ class SkillLoader:
         available_tools: Iterable[str] = (),
         allowed_permissions: Mapping[str, Any] | None = None,
     ):
-        self.roots = tuple(Path(root).resolve() for root in roots)
+        self.roots = tuple(_normalize_root(root) for root in roots)
         self.available_tools = frozenset(available_tools)
         self.allowed_permissions = dict(allowed_permissions or {})
 
@@ -217,6 +218,12 @@ def _required_text(raw: dict[str, Any], key: str, path: Path) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Skill {key} is required: {path}")
     return value.strip()
+
+
+def _normalize_root(root: str | Path) -> Path:
+    """Convert a configured Skill root to a stable absolute path."""
+    expanded = os.path.expandvars(str(root))
+    return Path(expanded).expanduser().resolve()
 
 
 def _text_list(value: Any, field_name: str) -> tuple[str, ...]:
