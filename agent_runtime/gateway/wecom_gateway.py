@@ -104,20 +104,31 @@ class WeComGateway:
             except Exception:
                 logger.exception("wecom_connection_error")
             finally:
-                if heartbeat_task:
-                    heartbeat_task.cancel()
-                    try:
-                        await heartbeat_task
-                    except asyncio.CancelledError:
-                        pass
-                if self._session:
-                    await self._session.close()
+                try:
+                    if heartbeat_task:
+                        heartbeat_task.cancel()
+                        try:
+                            await heartbeat_task
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception:
+                            logger.exception("wecom_heartbeat_shutdown_error")
+                finally:
+                    if self._session:
+                        await self._session.close()
+                    self._session = None
+                    self._ws = None
             await asyncio.sleep(5)
 
     async def _recover_approvals(self) -> None:
         if self.recovery_provider is None or self.approval_resumer is None:
             return
-        for request in self.recovery_provider():
+        try:
+            requests = await asyncio.to_thread(self.recovery_provider)
+        except Exception:
+            logger.exception("wecom_approval_recovery_failed")
+            return
+        for request in requests:
             asyncio.create_task(
                 self._resume_and_send(
                     request.id, request.identity.conversation_id
@@ -385,4 +396,3 @@ class WeComGateway:
         logger.debug("wecom_frame_send payload=%s", safe_preview(payload, 1000))
         await self._ws.send_json(payload)
         return request_id
-
