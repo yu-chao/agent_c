@@ -3,25 +3,25 @@ from time import sleep
 
 import pytest
 
-from agent_runtime.approval import RuntimeIdentity
-from agent_runtime.contracts import (
+from agent.approval import RuntimeIdentity
+from agent.contracts import (
     ModelRequest,
     ModelResponse,
     TextBlock,
     ToolCall,
 )
-from agent_runtime.core import AgentRuntime
-from agent_runtime.models.errors import (
+from agent.core import AgentRuntime
+from agent.models.errors import (
     PermanentModelError,
     RetryableModelError,
 )
-from agent_runtime.models.resilient import (
+from agent.models.resilient import (
     CircuitBreaker,
     ResilientModelProvider,
     RetryPolicy,
 )
-from agent_runtime.sessions import SQLiteSessionStore
-from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent.sessions import SQLiteSessionStore
+from agent.tools import ToolRegistry, ToolSpec
 
 
 class FakeProvider:

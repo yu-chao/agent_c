@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from agent_runtime.approval import (
+from agent.approval import (
     ApprovalAction,
     ApprovalRequest,
     ApprovalStatus,
@@ -14,18 +14,18 @@ from agent_runtime.approval import (
     RuntimeIdentity,
     SQLiteApprovalStore,
 )
-from agent_runtime.migrations import postgres_migrations
-from agent_runtime.memory import (
+from agent.migrations import postgres_migrations
+from agent.memory import (
     MemoryService,
     PostgresMemoryStore,
     SQLiteMemoryStore,
 )
-from agent_runtime.sessions import (
+from agent.sessions import (
     PostgresSessionStore,
     RunStatus,
     SQLiteSessionStore,
 )
-from agent_runtime.tasks import PostgresRunQueue
+from agent.tasks import PostgresRunQueue
 
 
 def _postgres_dsn() -> str:

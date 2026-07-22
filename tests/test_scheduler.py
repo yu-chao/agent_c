@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from agent_runtime.core import AgentRuntime
-from agent_runtime.models import ModelResponse, TextBlock
-from agent_runtime.scheduler import SchedulerService, cron_trigger_id
-from agent_runtime.sessions import SQLiteSessionStore
-from agent_runtime.tasks import TaskGraph, TaskService
-from agent_runtime.tools import ToolRegistry
+from agent.core import AgentRuntime
+from agent.models import ModelResponse, TextBlock
+from agent.scheduler import SchedulerService, cron_trigger_id
+from agent.sessions import SQLiteSessionStore
+from agent.tasks import TaskGraph, TaskService
+from agent.tools import ToolRegistry
 
 
 class FakeModel:

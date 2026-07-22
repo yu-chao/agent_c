@@ -3,12 +3,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from agent_runtime.admin import AdminActor, AdminScope, SQLiteAdminRepository
-from agent_runtime.retention import (
+from agent.admin import AdminActor, AdminScope, SQLiteAdminRepository
+from agent.retention import (
     RetentionService,
     SQLiteRetentionRepository,
 )
-from agent_runtime.sessions import SQLiteSessionStore
+from agent.sessions import SQLiteSessionStore
 
 
 def _actor(tenant="tenant-a"):

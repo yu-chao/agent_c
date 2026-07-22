@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.approval import RuntimeIdentity
-from agent_runtime.context import ContextManager
-from agent_runtime.memory import (
+from agent.approval import RuntimeIdentity
+from agent.context import ContextManager
+from agent.memory import (
     MemoryRecord,
     MemoryService,
     MemorySource,
     MemoryVisibility,
     SQLiteMemoryStore,
 )
-from agent_runtime.sessions import SQLiteSessionStore
-from agent_runtime.settings import MemorySettings, load_settings
+from agent.sessions import SQLiteSessionStore
+from agent.settings import MemorySettings, load_settings
 
 
 def identity(

@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.bootstrap import (
+from agent.bootstrap import (
     build_model_provider,
     build_runtime,
     build_tool_registry,
 )
-from agent_runtime.gateway import WeComGateway
-from agent_runtime.gateway.wecom_gateway import WeComGateway as ConcreteWeComGateway
-from agent_runtime.settings import (
+from agent.gateway import WeComGateway
+from agent.gateway.wecom_gateway import WeComGateway as ConcreteWeComGateway
+from agent.settings import (
     MCPSettings,
     ApprovalSettings,
     ContextSettings,
@@ -22,22 +22,22 @@ from agent_runtime.settings import (
     Settings,
     load_settings,
 )
-from agent_runtime.tools import ToolRegistry, ToolSpec
-from agent_runtime.models.resilient import ResilientModelProvider
+from agent.tools import ToolRegistry, ToolSpec
+from agent.models.resilient import ResilientModelProvider
 
 
 FORBIDDEN_CORE_IMPORTS = (
-    'agent_runtime.gateway',
-    'agent_runtime.mcp',
-    'agent_runtime.models.openai',
-    'agent_runtime.models.anthropic',
-    'agent_runtime.approval.store',
-    'agent_runtime.sessions',
+    'agent.gateway',
+    'agent.mcp',
+    'agent.models.openai',
+    'agent.models.anthropic',
+    'agent.approval.store',
+    'agent.sessions',
 )
 
 
 def test_core_does_not_import_infrastructure_adapters():
-    core = Path(__file__).parents[1] / 'agent_runtime' / 'core'
+    core = Path(__file__).parents[1] / 'agent' / 'core'
     violations = []
     for path in core.glob('*.py'):
         tree = ast.parse(path.read_text(encoding='utf-8'))
@@ -54,11 +54,11 @@ def test_core_does_not_import_infrastructure_adapters():
 
 def test_package_import_does_not_load_provider_adapters():
     for name in list(sys.modules):
-        if name.startswith('agent_runtime.models'):
+        if name.startswith('agent.models'):
             sys.modules.pop(name)
-    importlib.reload(importlib.import_module('agent_runtime'))
-    assert 'agent_runtime.models.openai' not in sys.modules
-    assert 'agent_runtime.models.anthropic' not in sys.modules
+    importlib.reload(importlib.import_module('agent'))
+    assert 'agent.models.openai' not in sys.modules
+    assert 'agent.models.anthropic' not in sys.modules
 
 
 def test_wecom_has_one_public_gateway_class():
@@ -278,7 +278,7 @@ def test_settings_reject_invalid_field_types(tmp_path, content, message):
 
 
 def test_model_factory_does_not_read_environment(monkeypatch):
-    from agent_runtime.models.factory import create_model_provider
+    from agent.models.factory import create_model_provider
 
     monkeypatch.setenv('AGENT_MODEL_PROVIDER', 'anthropic')
     provider = create_model_provider(clients={'openai': object()})

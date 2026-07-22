@@ -1,9 +1,9 @@
 import asyncio
 
-from agent_runtime.gateway.dingtalk_gateway import DingTalkGateway
-from agent_runtime.gateway.models import InboundMessage
-from agent_runtime.gateway.runner import GatewayRunner
-from agent_runtime.gateway.wecom import WeComGateway
+from agent.gateway.dingtalk_gateway import DingTalkGateway
+from agent.gateway.models import InboundMessage
+from agent.gateway.runner import GatewayRunner
+from agent.gateway.wecom import WeComGateway
 
 
 class FakeRuntime:

@@ -4,21 +4,21 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import get_type_hints
 
-from agent_runtime.approval import (
+from agent.approval import (
     ApprovalAction,
     RuntimeIdentity,
     SQLiteApprovalStore,
 )
-from agent_runtime.application import AssistantService
-from agent_runtime.core import AgentRuntime, InProgress
-from agent_runtime.context import (
+from agent.application import AssistantService
+from agent.core import AgentRuntime, InProgress
+from agent.context import (
     ApproximateTokenCounter,
     ContextManager,
 )
-from agent_runtime.models import ModelResponse, TextBlock, ToolCall
-from agent_runtime.sessions import RunStatus, SQLiteSessionStore
-from agent_runtime.security import PermissionPolicy
-from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent.models import ModelResponse, TextBlock, ToolCall
+from agent.sessions import RunStatus, SQLiteSessionStore
+from agent.security import PermissionPolicy
+from agent.tools import ToolRegistry, ToolSpec
 
 
 class FakeModel:

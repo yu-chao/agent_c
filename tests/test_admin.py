@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from agent_runtime.admin import (
+from agent.admin import (
     AdminActor,
     AdminAuthorizationError,
     AdminConflictError,
@@ -12,9 +12,9 @@ from agent_runtime.admin import (
     SQLiteAdminRepository,
     ToolDisposition,
 )
-from agent_runtime.bootstrap import build_admin_service, build_retention_service
-from agent_runtime.sessions import SQLiteSessionStore
-from agent_runtime.settings import SessionSettings, Settings
+from agent.bootstrap import build_admin_service, build_retention_service
+from agent.sessions import SQLiteSessionStore
+from agent.settings import SessionSettings, Settings
 
 
 def _actor(tenant="tenant-a", *scopes):

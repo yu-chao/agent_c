@@ -1,14 +1,14 @@
 import asyncio
 from datetime import datetime, timezone
 
-from agent_runtime.approval import (
+from agent.approval import (
     ApprovalDecision,
     ApprovalRequest,
     ApprovalStatus,
     RuntimeIdentity,
 )
-from agent_runtime.core import Completed, PendingApproval
-from agent_runtime.gateway.wecom_gateway import WeComGateway
+from agent.core import Completed, PendingApproval
+from agent.gateway.wecom_gateway import WeComGateway
 
 
 class FakeWebSocket:

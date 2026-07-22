@@ -2,7 +2,7 @@
 
 ## 项目结构与模块组织
 
-`agent_runtime/` 是可安装的 Python 包。与模型供应商无关的运行循环位于 `core/`，API 适配器位于 `models/`，工具注册逻辑位于 `tools/`；`hooks/`、`security/`、`storage/`、`tasks/`、`scheduler/`、`mcp/` 和 `gateway/` 分别承载对应的支撑能力。新增代码应放在其所属子系统中，必要时通过该包的 `__init__.py` 暴露公共接口。测试统一放在 `tests/`。默认配置位于 `config/default.yaml`，环境变量示例位于 `.env.example`。不要提交 `.env`、日志、缓存或其他本地产物。
+`agent/` 是可安装的 Python 包。与模型供应商无关的运行循环位于 `core/`，API 适配器位于 `models/`，工具注册逻辑位于 `tools/`；`hooks/`、`security/`、`storage/`、`tasks/`、`scheduler/`、`mcp/` 和 `gateway/` 分别承载对应的支撑能力。新增代码应放在其所属子系统中，必要时通过该包的 `__init__.py` 暴露公共接口。测试统一放在 `tests/`。默认配置位于 `config/default.yaml`，环境变量示例位于 `.env.example`。不要提交 `.env`、日志、缓存或其他本地产物。
 
 ## 构建、测试与本地开发
 

@@ -61,8 +61,8 @@ uv run --extra test python -m pytest -q
 
 ### 目标文件
 
-- Modify: `agent_runtime/settings.py`
-- Modify: `agent_runtime/bootstrap.py`
+- Modify: `../../agent/settings.py`
+- Modify: `../../agent/bootstrap.py`
 - Modify: `config/default.yaml`
 - Modify: `.env.example`
 - Test: `tests/test_architecture.py`
@@ -101,13 +101,13 @@ class ReliabilitySettings:
 
 ### 目标文件
 
-- Create: `agent_runtime/context/models.py`
-- Create: `agent_runtime/context/manager.py`
-- Create: `agent_runtime/context/token_counter.py`
-- Create: `agent_runtime/context/__init__.py`
-- Modify: `agent_runtime/sessions/store.py`
-- Modify: `agent_runtime/core/loop.py`
-- Modify: `agent_runtime/settings.py`
+- Create: `../../agent/context/models.py`
+- Create: `../../agent/context/manager.py`
+- Create: `../../agent/context/token_counter.py`
+- Create: `../../agent/context/__init__.py`
+- Modify: `../../agent/sessions/store.py`
+- Modify: `../../agent/core/loop.py`
+- Modify: `../../agent/settings.py`
 - Test: `tests/test_context.py`
 - Test: `tests/test_session_runtime.py`
 
@@ -141,11 +141,11 @@ class ContextManager(Protocol):
 
 ### 目标文件
 
-- Create: `agent_runtime/models/resilient.py`
-- Create: `agent_runtime/models/errors.py`
-- Modify: `agent_runtime/models/factory.py`
-- Modify: `agent_runtime/core/ports.py`
-- Modify: `agent_runtime/bootstrap.py`
+- Create: `../../agent/models/resilient.py`
+- Create: `../../agent/models/errors.py`
+- Modify: `../../agent/models/factory.py`
+- Modify: `../../agent/core/ports.py`
+- Modify: `../../agent/bootstrap.py`
 - Test: `tests/test_model_reliability.py`
 - Test: `tests/test_models.py`
 
@@ -177,12 +177,12 @@ class ResilientModelProvider:
 
 ### 目标文件
 
-- Create: `agent_runtime/core/cancellation.py`
-- Modify: `agent_runtime/sessions/models.py`
-- Modify: `agent_runtime/sessions/store.py`
-- Modify: `agent_runtime/core/loop.py`
-- Modify: `agent_runtime/application/assistant.py`
-- Modify: `agent_runtime/gateway/models.py`
+- Create: `../../agent/core/cancellation.py`
+- Modify: `../../agent/sessions/models.py`
+- Modify: `../../agent/sessions/store.py`
+- Modify: `../../agent/core/loop.py`
+- Modify: `../../agent/application/assistant.py`
+- Modify: `../../agent/gateway/models.py`
 - Test: `tests/test_cancellation.py`
 - Test: `tests/test_session_runtime.py`
 
@@ -210,13 +210,13 @@ class ResilientModelProvider:
 
 ### 目标文件
 
-- Create: `agent_runtime/skills/models.py`
-- Create: `agent_runtime/skills/loader.py`
-- Create: `agent_runtime/skills/selector.py`
-- Create: `agent_runtime/skills/__init__.py`
-- Modify: `agent_runtime/core/loop.py`
-- Modify: `agent_runtime/bootstrap.py`
-- Modify: `agent_runtime/settings.py`
+- Create: `../../agent/skills/models.py`
+- Create: `../../agent/skills/loader.py`
+- Create: `../../agent/skills/selector.py`
+- Create: `../../agent/skills/__init__.py`
+- Modify: `../../agent/core/loop.py`
+- Modify: `../../agent/bootstrap.py`
+- Modify: `../../agent/settings.py`
 - Create: `tests/test_skills.py`
 
 ### Manifest 最小格式
@@ -255,10 +255,10 @@ activation:
 
 ### 目标文件
 
-- Modify: `agent_runtime/tools/registry.py`
-- Modify: `agent_runtime/core/tool_execution.py`
-- Modify: `agent_runtime/core/ports.py`
-- Modify: `agent_runtime/contracts.py`
+- Modify: `../../agent/tools/registry.py`
+- Modify: `../../agent/core/tool_execution.py`
+- Modify: `../../agent/core/ports.py`
+- Modify: `../../agent/contracts.py`
 - Test: `tests/test_tool_execution.py`
 
 ### 建议模型
@@ -295,12 +295,12 @@ class ToolPolicy:
 
 ### 目标文件
 
-- Create: `agent_runtime/observability/context.py`
-- Create: `agent_runtime/observability/metrics.py`
-- Create: `agent_runtime/observability/tracing.py`
-- Modify: `agent_runtime/logging_utils.py`
-- Modify: `agent_runtime/core/loop.py`
-- Modify: `agent_runtime/gateway/*`
+- Create: `../../agent/observability/context.py`
+- Create: `../../agent/observability/metrics.py`
+- Create: `../../agent/observability/tracing.py`
+- Modify: `../../agent/logging_utils.py`
+- Modify: `../../agent/core/loop.py`
+- Modify: `../../agent/gateway/*`
 - Test: `tests/test_observability.py`
 
 ### 必须关联的字段
@@ -330,11 +330,11 @@ class ToolPolicy:
 
 ### 目标文件
 
-- Modify: `agent_runtime/tasks/graph.py`
-- Create: `agent_runtime/tasks/service.py`
-- Modify: `agent_runtime/scheduler/cron.py`
-- Create: `agent_runtime/scheduler/service.py`
-- Modify: `agent_runtime/application/assistant.py`
+- Modify: `../../agent/tasks/graph.py`
+- Create: `../../agent/tasks/service.py`
+- Modify: `../../agent/scheduler/cron.py`
+- Create: `../../agent/scheduler/service.py`
+- Modify: `../../agent/application/assistant.py`
 - Test: `tests/test_tasks.py`
 - Test: `tests/test_scheduler.py`
 
@@ -362,11 +362,11 @@ class ToolPolicy:
 
 ### 目标文件
 
-- Create: `agent_runtime/sessions/ports.py`
-- Create: `agent_runtime/sessions/postgres_store.py`
-- Create: `agent_runtime/approval/postgres_store.py`
-- Create: `agent_runtime/migrations/`
-- Modify: `agent_runtime/bootstrap.py`
+- Create: `../../agent/sessions/ports.py`
+- Create: `../../agent/sessions/postgres_store.py`
+- Create: `../../agent/approval/postgres_store.py`
+- Create: `../../agent/migrations/`
+- Modify: `../../agent/bootstrap.py`
 - Test: `tests/integration/test_postgres_storage.py`
 
 ### 关键要求
@@ -392,10 +392,10 @@ class ToolPolicy:
 
 ### 目标文件
 
-- Create: `agent_runtime/memory/models.py`
-- Create: `agent_runtime/memory/service.py`
-- Create: `agent_runtime/memory/store.py`
-- Create: `agent_runtime/memory/retrieval.py`
+- Create: `../../agent/memory/models.py`
+- Create: `../../agent/memory/service.py`
+- Create: `../../agent/memory/store.py`
+- Create: `../../agent/memory/retrieval.py`
 - Test: `tests/test_memory.py`
 
 ### 数据模型
@@ -423,9 +423,9 @@ class ToolPolicy:
 
 ### 建议文件
 
-- Create: `agent_runtime/admin/service.py`
-- Create: `agent_runtime/admin/api.py`
-- Create: `agent_runtime/retention/service.py`
+- Create: `../../agent/admin/service.py`
+- Create: `../../agent/admin/api.py`
+- Create: `../../agent/retention/service.py`
 - Test: `tests/test_admin.py`
 - Test: `tests/test_retention.py`
 
@@ -446,8 +446,8 @@ class ToolPolicy:
 
 ### 建议文件
 
-- Create: `agent_runtime/orchestration/coordinator.py`
-- Create: `agent_runtime/orchestration/models.py`
+- Create: `../../agent/orchestration/coordinator.py`
+- Create: `../../agent/orchestration/models.py`
 - Test: `tests/test_orchestration.py`
 
 ---

@@ -15,9 +15,9 @@
 **Objective:** 建立可原子创建 Run、保存消息和读取短时上下文的持久化边界。
 
 **Files:**
-- Create: `agent_runtime/sessions/models.py`
-- Create: `agent_runtime/sessions/store.py`
-- Create: `agent_runtime/sessions/__init__.py`
+- Create: `../../agent/sessions/models.py`
+- Create: `../../agent/sessions/store.py`
+- Create: `../../agent/sessions/__init__.py`
 - Test: `tests/test_sessions.py`
 
 **Steps:**
@@ -31,8 +31,8 @@
 **Objective:** 持久化每个 Run 的恢复载荷，并保证结果未知的工具调用不会自动重放。
 
 **Files:**
-- Modify: `agent_runtime/sessions/models.py`
-- Modify: `agent_runtime/sessions/store.py`
+- Modify: `../../agent/sessions/models.py`
+- Modify: `../../agent/sessions/store.py`
 - Test: `tests/test_sessions.py`
 
 **Steps:**
@@ -46,8 +46,8 @@
 **Objective:** 在每轮对话中加载短时历史、保存消息与检查点，并提供 `resume_run`。
 
 **Files:**
-- Modify: `agent_runtime/core/loop.py`
-- Modify: `agent_runtime/core/results.py`
+- Modify: `../../agent/core/loop.py`
+- Modify: `../../agent/core/results.py`
 - Test: `tests/test_session_runtime.py`
 
 **Steps:**
@@ -61,9 +61,9 @@
 **Objective:** 默认启用 SQLite 会话仓库并在进程启动时隔离遗留运行。
 
 **Files:**
-- Modify: `agent_runtime/settings.py`
-- Modify: `agent_runtime/bootstrap.py`
-- Modify: `agent_runtime/application/assistant.py`
+- Modify: `../../agent/settings.py`
+- Modify: `../../agent/bootstrap.py`
+- Modify: `../../agent/application/assistant.py`
 - Modify: `config/default.yaml`
 - Test: `tests/test_architecture.py`
 

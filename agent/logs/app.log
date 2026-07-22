@@ -1,0 +1,4 @@
+{"timestamp": "2026-07-22T11:44:08.513797+00:00", "level": "INFO", "logger": "__main__", "message": "agent_runtime_starting gateway=wecom"}
+{"timestamp": "2026-07-22T11:44:08.544794+00:00", "level": "DEBUG", "logger": "asyncio", "message": "Using proactor: IocpProactor"}
+{"timestamp": "2026-07-22T11:44:08.582363+00:00", "level": "DEBUG", "logger": "asyncio", "message": "Using proactor: IocpProactor"}
+{"timestamp": "2026-07-22T11:44:08.603442+00:00", "level": "DEBUG", "logger": "asyncio", "message": "Using proactor: IocpProactor"}

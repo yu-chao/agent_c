@@ -1,8 +1,8 @@
 from datetime import datetime
 
-from agent_runtime.mcp import MCPHub, MCPServerConfig, StreamableHTTPMCPClient
-from agent_runtime.scheduler.cron import cron_matches, validate_cron
-from agent_runtime.tasks.graph import TaskGraph
+from agent.mcp import MCPHub, MCPServerConfig, StreamableHTTPMCPClient
+from agent.scheduler.cron import cron_matches, validate_cron
+from agent.tasks.graph import TaskGraph
 
 
 def test_task_graph_blocks_claim_until_dependencies_complete(tmp_path):

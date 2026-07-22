@@ -1,4 +1,4 @@
-from agent_runtime.cli import create_cli_identity
+from agent.cli import create_cli_identity
 
 
 def test_cli_identity_uses_named_session_and_unique_message_ids():

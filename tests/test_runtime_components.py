@@ -1,11 +1,11 @@
 import pytest
 
-from agent_runtime.core.loop import AgentRuntime
-from agent_runtime.hooks.manager import HookManager
-from agent_runtime.models import ModelResponse, TextBlock, ToolCall, ToolResult
-from agent_runtime.security.permissions import PermissionPolicy
-from agent_runtime.storage.file_store import FileStore
-from agent_runtime.tools.registry import ToolRegistry, ToolSpec
+from agent.core.loop import AgentRuntime
+from agent.hooks.manager import HookManager
+from agent.models import ModelResponse, TextBlock, ToolCall, ToolResult
+from agent.security.permissions import PermissionPolicy
+from agent.storage.file_store import FileStore
+from agent.tools.registry import ToolRegistry, ToolSpec
 
 
 def test_tool_registry_merges_builtin_and_mcp_tools():

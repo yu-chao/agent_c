@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.settings import StorageSettings, load_settings
+from agent.settings import StorageSettings, load_settings
 
 
 def test_postgres_storage_configuration_is_parsed(tmp_path, monkeypatch):
@@ -42,10 +42,10 @@ def test_queue_cannot_be_enabled_for_sqlite():
 
 
 def test_postgres_advisory_lock_key_has_no_nul_bytes():
-    from agent_runtime.approval.postgres_store import (
+    from agent.approval.postgres_store import (
         _advisory_lock_key as approval_lock_key,
     )
-    from agent_runtime.sessions.postgres_store import _advisory_lock_key
+    from agent.sessions.postgres_store import _advisory_lock_key
 
     for key in (
         _advisory_lock_key("wecom", "msg\x00id"),

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import sqlite3
 
-from agent_runtime.approval import (
+from agent.approval import (
     ApprovalAction,
     ApprovalCoordinator,
     ApprovalRequest,
@@ -11,10 +11,10 @@ from agent_runtime.approval import (
     RuntimeIdentity,
     SQLiteApprovalStore,
 )
-from agent_runtime.core import AgentRuntime, Completed, PendingApproval
-from agent_runtime.models import ModelResponse, TextBlock, ToolCall
-from agent_runtime.security import PermissionAction, PermissionPolicy
-from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent.core import AgentRuntime, Completed, PendingApproval
+from agent.models import ModelResponse, TextBlock, ToolCall
+from agent.security import PermissionAction, PermissionPolicy
+from agent.tools import ToolRegistry, ToolSpec
 
 
 TOOL = "mcp__PlantMartBusiness__queryProductInfoUsingPOST"

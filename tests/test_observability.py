@@ -4,22 +4,22 @@ import logging
 
 import pytest
 
-from agent_runtime.approval import RuntimeIdentity, SQLiteApprovalStore
-from agent_runtime.contracts import ModelResponse, TextBlock, ToolCall
-from agent_runtime.core import AgentRuntime
-from agent_runtime.logging_utils import CorrelationFilter, StructuredJsonFormatter
-from agent_runtime.gateway.models import InboundMessage
-from agent_runtime.gateway.runner import GatewayRunner
-from agent_runtime.observability import (
+from agent.approval import RuntimeIdentity, SQLiteApprovalStore
+from agent.contracts import ModelResponse, TextBlock, ToolCall
+from agent.core import AgentRuntime
+from agent.logging_utils import CorrelationFilter, StructuredJsonFormatter
+from agent.gateway.models import InboundMessage
+from agent.gateway.runner import GatewayRunner
+from agent.observability import (
     InMemorySpanExporter,
     MetricsRegistry,
     Observability,
     Tracer,
     bind_context,
 )
-from agent_runtime.sessions import SQLiteSessionStore
-from agent_runtime.security import PermissionPolicy
-from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent.sessions import SQLiteSessionStore
+from agent.security import PermissionPolicy
+from agent.tools import ToolRegistry, ToolSpec
 
 
 class FakeModel:

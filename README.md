@@ -7,7 +7,7 @@
 幂等；CLI 可使用 `--session` 选择持久化会话：
 
 ```sh
-uv run python -m agent_runtime --provider openai --session project-a
+uv run python -m agent --provider openai --session project-a
 ```
 
 每个用户请求对应一个独立 Run。运行时只把最近
@@ -45,14 +45,14 @@ uv sync --extra postgres
 ```yaml
 storage:
   backend: postgres
-  postgres_dsn: postgresql://agent:password@db.example.com/agent_runtime
+  postgres_dsn: postgresql://agent:password@db.example.com/agent
   migrate_on_start: true
   queue_enabled: true
 ```
 
 也可通过 `AGENT_STORAGE_BACKEND`、`AGENT_POSTGRES_DSN`、
 `AGENT_STORAGE_MIGRATE_ON_START` 和 `AGENT_RUN_QUEUE_ENABLED` 覆盖。首次连接会按
-`agent_runtime/migrations/postgres/` 中的显式版本迁移建表；生产发布也可以先由部署
+`agent/migrations/postgres/` 中的显式版本迁移建表；生产发布也可以先由部署
 流程调用 `agent_runtime.migrations.apply_postgres_migrations()`，再把
 `migrate_on_start` 设为 `false`。
 
@@ -93,8 +93,8 @@ memory:
 
 ```sh
 uv run --extra test python -m pytest -q
-uv run python -m agent_runtime --provider openai --model gpt-5
-uv run python -m agent_runtime --provider anthropic
+uv run python -m agent --provider openai --model gpt-5
+uv run python -m agent --provider anthropic
 ```
 
 企业微信长连接入口：
@@ -244,7 +244,7 @@ MCP 时，MCP 工具会继续合并到同一个注册表。工具执行失败会
 不会因可恢复的参数或文件错误中断整个 Run。
 
 ```python
-from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent.tools import ToolRegistry, ToolSpec
 
 registry = ToolRegistry()
 registry.register(

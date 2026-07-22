@@ -1,10 +1,10 @@
-from agent_runtime.context import (
+from agent.context import (
     ApproximateTokenCounter,
     ContextManager,
     ContextWindow,
 )
-from agent_runtime.contracts import ToolCall, ToolResult
-from agent_runtime.sessions import SQLiteSessionStore
+from agent.contracts import ToolCall, ToolResult
+from agent.sessions import SQLiteSessionStore
 
 
 def test_context_window_keeps_current_user_and_latest_tool_result():

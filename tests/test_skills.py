@@ -4,17 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.approval import RuntimeIdentity
-from agent_runtime.contracts import ModelResponse, TextBlock, ToolCall
-from agent_runtime.core import AgentRuntime
-from agent_runtime.sessions import SQLiteSessionStore
-from agent_runtime.settings import SkillsSettings, load_settings
-from agent_runtime.skills import (
+from agent.approval import RuntimeIdentity
+from agent.contracts import ModelResponse, TextBlock, ToolCall
+from agent.core import AgentRuntime
+from agent.sessions import SQLiteSessionStore
+from agent.settings import SkillsSettings, load_settings
+from agent.skills import (
     SkillLoader,
     SkillSelector,
     SkillSnapshotMismatch,
 )
-from agent_runtime.tools import ToolRegistry, ToolSpec
+from agent.tools import ToolRegistry, ToolSpec
 
 
 def _write_skill(

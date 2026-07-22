@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import aiohttp
 import pytest
 
-from agent_runtime.gateway.wecom_gateway import WeComGateway
+from agent.gateway.wecom_gateway import WeComGateway
 
 
 async def _handler(message):

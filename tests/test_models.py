@@ -1,16 +1,16 @@
 import pytest
 
-from agent_runtime.models import (
+from agent.models import (
     ModelRequest,
     TextBlock,
     ToolCall,
     ToolResult,
     create_model_provider,
 )
-from agent_runtime.models.openai import OpenAIProvider
-from agent_runtime.models.anthropic import AnthropicProvider
-from agent_runtime.models.errors import PermanentModelError, RetryableModelError
-from agent_runtime.tools.registry import ToolSpec
+from agent.models.openai import OpenAIProvider
+from agent.models.anthropic import AnthropicProvider
+from agent.models.errors import PermanentModelError, RetryableModelError
+from agent.tools.registry import ToolSpec
 
 
 def test_openai_tool_schema_converts_internal_tool_spec():

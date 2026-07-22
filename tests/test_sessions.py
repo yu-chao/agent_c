@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from agent_runtime.core.run_state import RunLeaseLost
-from agent_runtime.sessions import RunStatus, SQLiteSessionStore
+from agent.core.run_state import RunLeaseLost
+from agent.sessions import RunStatus, SQLiteSessionStore
 
 
 def begin(store, message_id="message-1"):
