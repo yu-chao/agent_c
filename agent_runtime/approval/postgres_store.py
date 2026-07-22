@@ -42,7 +42,7 @@ class PostgresApprovalStore:
             if run_id:
                 db.execute(
                     "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
-                    (f"{run_id}\0{item.tool_call_id}",),
+                    (_advisory_lock_key(run_id, item.tool_call_id),),
                 )
                 existing = db.execute(
                     "SELECT approvals.* FROM approval_links JOIN approvals "
@@ -238,6 +238,11 @@ def _get(db: Any, approval_id: str) -> ApprovalRequest:
     return _request(db.execute(
         "SELECT * FROM approvals WHERE id=%s", (approval_id,)
     ).fetchone())
+
+
+def _advisory_lock_key(*parts: str) -> str:
+    # PostgreSQL text parameters cannot contain NUL (0x00) bytes.
+    return json.dumps(list(parts), ensure_ascii=False, separators=(",", ":"))
 
 
 def _request(row: dict[str, Any]) -> ApprovalRequest:

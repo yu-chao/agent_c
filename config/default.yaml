@@ -8,11 +8,11 @@ reliability:
   fallback_model: deepseek-v4-pro
 storage:
   # 本地默认使用 sqlite；生产多实例部署可切换为 postgres。
-  backend: sqlite
-  postgres_dsn: null
+  backend: postgres
+  postgres_dsn: postgresql://postgres:difyai123456@10.10.56.51:5432/agent_runtime
   migrate_on_start: true
   # 队列仅投递 Run ID，Run 状态始终以数据库为准。
-  queue_enabled: false
+  queue_enabled: true
 memory:
   # 长期记忆涉及隐私，默认关闭且只接受显式用户陈述或纠正。
   enabled: false
@@ -24,14 +24,14 @@ session:
   store_path: .runtime/sessions.db
   lease_seconds: 30
 context:
-  recent_message_limit: 20
+  recent_message_limit: 3
   max_input_tokens: 32000
   summary_trigger_tokens: 24000
   tool_result_max_tokens: 4000
 skills:
-  enabled: false
+  enabled: true
   paths:
-    - skills
+    - config/skills
   max_active: 3
   allowed_filesystem: read
 approval:
@@ -40,14 +40,14 @@ approval:
   store_path: .runtime/approvals.db
   tools:
     - mcp__PlantMartBusiness__queryProductInfoUsingPOST
-# mcp:
-#   enabled_servers:
-#     - PlantMartBusiness
-#   servers:
-    # - name: PlantMartBusiness
-    #   type: streamable-http
-    #   url: http://10.20.1.72:8085/mcp?serverCode=SI-00006
-    #   headers:
-    #     Authorization: ${PLANTMART_MCP_AUTHORIZATION}
-    #   timeout: 50
-    #   sse_read_timeout: 50
+mcp:
+  enabled_servers:
+    - PlantMartBusiness
+  servers:
+    - name: PlantMartBusiness
+      type: streamable-http
+      url: http://10.20.1.72:8085/mcp?serverCode=SI-00007
+      headers:
+        Authorization: ${PLANTMART_MCP_AUTHORIZATION}
+      timeout: 50
+      sse_read_timeout: 50

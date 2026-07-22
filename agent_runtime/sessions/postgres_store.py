@@ -74,7 +74,7 @@ class PostgresSessionStore:
         with self._connect() as db:
             db.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
-                (f"{platform}\0{message_id}",),
+                (_advisory_lock_key(platform, message_id),),
             )
             existing = db.execute(
                 "SELECT run_id,response FROM inbound_messages "
@@ -491,6 +491,11 @@ class PostgresSessionStore:
         ):
             raise RunLeaseLost(f"Run lease lost: {run_id}")
         return token
+
+
+def _advisory_lock_key(*parts: str) -> str:
+    # PostgreSQL text parameters cannot contain NUL (0x00) bytes.
+    return json.dumps(list(parts), ensure_ascii=False, separators=(",", ":"))
 
 
 def _now() -> datetime:
